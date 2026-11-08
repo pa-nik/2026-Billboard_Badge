@@ -6,9 +6,12 @@ User B: restart the current name
 
 Edit NAMES and the settings below to make it your own.
 
-A full e-paper refresh takes many seconds, so the animation is a series of
-snapshots, one per refresh, not smooth motion. Each snapshot shows the pieces
-that have landed (black) and the next few pieces still in the air (red).
+The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels
+with current firmware (display.supports_fast) the pieces fall in a handful of
+partial refreshes each, about 1 s apiece (see lib/epd_fast.py): the screen is
+cleared with one full refresh, then only the pixels that change are redrawn.
+Elsewhere it falls back to a slideshow, one full refresh per snapshot, showing
+the pieces landed (black) and the next few still in the air (red).
 """
 
 import random
@@ -44,8 +47,33 @@ BLINK_MS = 500
 BLINK_COLOR = (20, 20, 20)
 """LED brightness is 0-255 and they are bright. Keep it low."""
 
+FAST = True
+"""Use partial refreshes where the panel and firmware support them. False forces
+the slideshow."""
+
+PIECES_AT_ONCE = 2
+"""Pieces falling together, in different columns. Each batch costs
+FALL_FRAMES refreshes, so more at once is faster overall."""
+
+FALL_FRAMES = 4
+"""Refreshes per batch: it appears, moves down, and lands. At least 2."""
+
+FALL_ROWS = 9
+"""How many rows above its landing spot a piece first appears."""
+
+HOP_PULLS = 1
+"""Drive steps (about 1.1 s each) for frames while a piece is moving. 1 is
+quickest but pale. Raise to 2 or 3 if falling pieces are too faint to see."""
+
+SETTLE_PULLS = 3
+"""Drive steps for the frame where a piece lands. 3 is solid black."""
+
+BLINK_PULLS = 3
+"""Drive steps for each flash when BLINK_MODE is 'screen' and fast refresh is on."""
+
 FLIGHT_MIN_ROWS = 2
-"""Pieces in the air are drawn at least this many rows above their landing spot."""
+"""Slideshow only: pieces in the air are drawn at least this many rows above
+their landing spot."""
 
 SPLIT_ATTEMPTS = 40
 """Random tries at cutting each letter into pieces. Fewer pieces is better."""
@@ -74,6 +102,8 @@ FONT = {
 
 _BUILD = 0
 _BLINK = 1
+_CLEAR = 2
+_DROP = 3
 
 
 def _neighbors(c):
@@ -199,6 +229,28 @@ class _Plan:
             order.append(pick)
         return order
 
+    def land_batches(self, at_once):
+        """Pieces grouped to fall together: in different columns, so they cannot
+        touch in the air, and none waiting on another in its group."""
+        done = set()
+        batches = []
+        while len(done) < len(self.pieces):
+            ready = [i for i in range(len(self.pieces))
+                     if i not in done and self.before[i] <= done]
+            batch = []
+            cols = set()
+            while ready and len(batch) < at_once:
+                pick = random.choice(ready)
+                ready.remove(pick)
+                pick_cols = set(x for x, _ in self.pieces[pick])
+                if cols & pick_cols:
+                    continue
+                batch.append(pick)
+                cols |= pick_cols
+            done.update(batch)
+            batches.append(batch)
+        return batches
+
     def draw_piece(self, plane, cells, rows_up=0):
         size = self.cell - self.gap
         for x, y in cells:
@@ -232,11 +284,16 @@ class TetrisNametagApp(BaseApp):
         self.plans = {}
         self.word = 0
         self.state = _BUILD
+        self.fast = False
         self.plan = None
         self.order = []
         self.batch_size = 1
         self.frame = 0
         self.frames = 0
+        self.batches = []
+        self.batch = 0
+        self.landed = []
+        self.spawn = {}
         self.blink_step = 0
         self.blink_ms = 0
         self.frame_ms = 0
@@ -247,6 +304,18 @@ class TetrisNametagApp(BaseApp):
         if plan is None:
             plan = self.plans[self.word] = _Plan(NAMES[self.word])
         self.plan = plan
+        self.fast = FAST and getattr(display, "supports_fast", False)
+        self.frame_ms = 0
+        if self.fast:
+            self.batches = plan.land_batches(max(1, PIECES_AT_ONCE))
+            self.order = [i for batch in self.batches for i in batch]
+            self.batch = 0
+            self.frame = 0
+            self.landed = []
+            self.state = _CLEAR
+            print(f"{NAMES[self.word]}: {len(self.order)} pieces, "
+                  f"{len(self.batches) * FALL_FRAMES} partial refreshes, cell {plan.cell}px")
+            return
         self.order = plan.land_sequence()
         count = len(self.order)
         self.batch_size = max(1, (count + TARGET_FRAMES - 1) // TARGET_FRAMES)
@@ -257,7 +326,7 @@ class TetrisNametagApp(BaseApp):
         print(f"{NAMES[self.word]}: {count} pieces, {self.frames} frames, cell {plan.cell}px")
 
     def _show(self, landed, in_air=()):
-        """Queue a snapshot: landed pieces in black, pieces in the air in red."""
+        """Slideshow: queue a snapshot, landed pieces in black, in the air in red."""
         plan = self.plan
         display.clear()
         for i in landed:
@@ -273,6 +342,41 @@ class TetrisNametagApp(BaseApp):
         in_air = self.order[len(landed):len(landed) + self.batch_size]
         self._show(landed, in_air)
         self.frame += 1
+
+    def _show_fast(self, moving, pulls):
+        """Partial refresh: landed pieces plus the moving ones, all black.
+        moving is a list of (piece, rows above its landing spot)."""
+        plan = self.plan
+        display.clear()
+        for i in self.landed:
+            plan.draw_piece(display.black, plan.pieces[i])
+        for i, rows_up in moving:
+            plan.draw_piece(display.black, plan.pieces[i], rows_up)
+        display.update(fast=True, pulls=pulls)
+        self.frame_ms = time.ticks_ms()
+
+    def _drop_frame(self):
+        """One partial refresh of the current batch falling: it appears up in the
+        air, steps down FALL_FRAMES - 2 times, and lands on the last frame."""
+        plan = self.plan
+        batch = self.batches[self.batch]
+        last = max(2, FALL_FRAMES) - 1
+        if self.frame == 0:
+            self.spawn = {}
+            for i in batch:
+                room = min(y for _, y in plan.pieces[i])
+                self.spawn[i] = random.randint(min(FALL_ROWS // 2 + 1, room), min(FALL_ROWS, room))
+        moving = []
+        for i in batch:
+            step = (self.spawn[i] + last - 1) // last
+            moving.append((i, max(0, self.spawn[i] - step * self.frame)))
+        self._show_fast(moving, SETTLE_PULLS if self.frame == last else HOP_PULLS)
+        if self.frame == last:
+            self.landed.extend(batch)
+            self.batch += 1
+            self.frame = 0
+        else:
+            self.frame += 1
 
     def _start_blink(self):
         self.state = _BLINK
@@ -296,12 +400,14 @@ class TetrisNametagApp(BaseApp):
         # The name is up. Alternate blank and name, once per finished refresh.
         if self.blink_step >= 2 * BLINK_COUNT:
             self._start_word(self.word + 1)
-        elif self.blink_step % 2 == 0:
-            self._show([])
-            self.blink_step += 1
+            return
+        shown = self.order if self.blink_step % 2 else []
+        if self.fast:
+            self.landed = shown
+            self._show_fast([], BLINK_PULLS)
         else:
-            self._show(self.order)
-            self.blink_step += 1
+            self._show(shown)
+        self.blink_step += 1
 
     def run(self):
         if self.launched:
@@ -320,10 +426,22 @@ class TetrisNametagApp(BaseApp):
         if not display.is_done_updating():
             return
 
-        if self.state == _BUILD:
-            if self.frame_ms:
-                print("refresh ms:", time.ticks_diff(time.ticks_ms(), self.frame_ms))
-                self.frame_ms = 0
+        if self.frame_ms:
+            print("refresh ms:", time.ticks_diff(time.ticks_ms(), self.frame_ms))
+            self.frame_ms = 0
+
+        if self.state == _CLEAR:
+            # The one full refresh per name: wipes the last name and any ghosts.
+            display.clear()
+            display.update()
+            self.frame_ms = time.ticks_ms()
+            self.state = _DROP
+        elif self.state == _DROP:
+            if self.batch < len(self.batches):
+                self._drop_frame()
+            else:
+                self._start_blink()
+        elif self.state == _BUILD:
             if self.frame < self.frames:
                 self._show_frame()
             else:
