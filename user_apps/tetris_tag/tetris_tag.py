@@ -1,6 +1,6 @@
 """Tetris Tag. Tetris-like pieces fall and stack up to spell a name along the
-bottom edge of the screen, the name blinks, then it is built again (or the next
-name, if NAMES lists more than one).
+bottom edge of the screen, the name blinks, stays up for HOLD_S seconds, then it is
+built again (or the next name, if NAMES lists more than one).
 
 User A: turn the left falling piece 90 degrees clockwise
 User B: turn the right falling piece 90 degrees clockwise
@@ -68,6 +68,10 @@ BLINK_COUNT = 3
 BLINK_MS = 500
 BLINK_COLOR = (20, 20, 20)
 """LED brightness is 0-255 and they are bright. Keep it low."""
+
+HOLD_S = 30
+"""Seconds the finished name stays on the screen, after the blinking, before the next
+round starts. User A skips the wait to the next name, User B restarts this one."""
 
 FAST = True
 """Use partial refreshes where the panel and firmware support them. False forces
@@ -149,6 +153,7 @@ _BUILD = 0
 _BLINK = 1
 _CLEAR = 2
 _DROP = 3
+_HOLD = 4
 
 
 def _neighbors(c):
@@ -532,6 +537,7 @@ class TetrisTagApp(BaseApp):
         self.landed = []
         self.blink_step = 0
         self.blink_ms = 0
+        self.hold_ms = 0
         self.frame_ms = 0
         self.fliers = []  # the pieces of the current wave in the air
         self.taps = [0, 0]  # presses of User A and User B since the last refresh
@@ -648,6 +654,12 @@ class TetrisTagApp(BaseApp):
         if BLINK_MODE == "leds":
             leds.fill(BLINK_COLOR)
 
+    def _start_hold(self):
+        """The name stays up, untouched, for HOLD_S seconds."""
+        self.state = _HOLD
+        self.hold_ms = time.ticks_ms()
+        print(f"Holding {NAMES[self.word]} for {HOLD_S} s")
+
     def _blink_leds(self):
         if time.ticks_diff(time.ticks_ms(), self.blink_ms) < BLINK_MS:
             return
@@ -655,14 +667,14 @@ class TetrisTagApp(BaseApp):
         self.blink_step += 1
         if self.blink_step >= 2 * BLINK_COUNT:
             leds.fill((0, 0, 0))
-            self._start_word(self.word + 1)
+            self._start_hold()
         else:
             leds.fill(BLINK_COLOR if self.blink_step % 2 == 0 else (0, 0, 0))
 
     def _blink_screen(self):
         # The name is up. Alternate blank and name, once per finished refresh.
         if self.blink_step >= 2 * BLINK_COUNT:
-            self._start_word(self.word + 1)
+            self._start_hold()
             return
         shown = self.order if self.blink_step % 2 else []
         if self.fast and not display.supports_fast:
@@ -725,6 +737,9 @@ class TetrisTagApp(BaseApp):
                 self._show_frame()
             else:
                 self._start_blink()
+        elif self.state == _HOLD:
+            if time.ticks_diff(time.ticks_ms(), self.hold_ms) >= HOLD_S * 1000:
+                self._start_word(self.word + 1)
         elif BLINK_MODE == "leds":
             self._blink_leds()
         else:

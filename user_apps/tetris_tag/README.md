@@ -1,11 +1,15 @@
 # Tetris Tag
 
+Tetris Tag takes inspiration from Tetris to assemble your name on the badge. Use User A and B buttons to play!
+
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
-the screen, two at a time, and you steer them. The name blinks three times, then it is
-built again, and it loops forever. It ships with the placeholder "YOUR NAME"; put your
+the screen, two at a time, and you steer them. The name blinks three times, stays up for
+30 seconds, then it is built again, and it loops forever. It ships with the placeholder "YOUR NAME"; put your
 own in `NAMES` (see below).
 
 Author: Nikita Pashenkov, <https://github.com/pa-nik>
+
+Concept by the Soviet people, execution by [pa-nik](https://github.com/pa-nik) and Claude.
 
 Controls:
 ```
@@ -16,7 +20,7 @@ Menu +/-: back to the app menu (as for every app)
 User A and User B are the two bottom buttons, A at the bottom left and B at the bottom right
 (from the PCB layout in `hardware/billboard_pcb`). The two top buttons are Menu -/+, which the
 badge firmware reserves for leaving the app, so an app cannot use them.
-Between names (while the screen is clearing or the name blinks) User A skips to the next
+Between names (while the screen is clearing, the name blinks or the finished name is held) User A skips to the next
 name and User B restarts the current one, as before.
 
 ## How to play
@@ -43,7 +47,8 @@ Edit the top of `tetris_tag.py`:
   (1 or 2), the screen height they start from, how far they fall each refresh, and the
   screen height where an unturned piece starts turning itself.
 * `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
-* `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below.
+* `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below. `HOLD_S`: how long the finished name
+  stays up after the blinking (30 s).
 * `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
 
 ## Banner
@@ -110,12 +115,16 @@ the badge is not a B1 panel, or the firmware does not have `epd_fast.py`, the ap
 falls back to a slideshow of full refreshes, one per snapshot, with the pieces in the
 air in red. The slideshow does not turn the pieces.
 
-## Blinking
+## Blinking and holding
 
 The paper cannot refresh in half a second, so `BLINK_MODE = "leds"` (the default)
 keeps the finished name on the paper and blinks the LED bar, half a second on and
 half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 (name, blank, name...), but each step is at least one drive step, so it is much slower.
+
+When the blinking is over the finished name stays on the screen, untouched, for `HOLD_S`
+seconds (30) before the next round starts with a full-screen clear. User A skips the wait to
+the next name and User B restarts the current one right away.
 
 ## Install
 
