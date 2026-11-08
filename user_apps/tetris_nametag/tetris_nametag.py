@@ -402,6 +402,8 @@ class TetrisNametagApp(BaseApp):
             self._start_word(self.word + 1)
             return
         shown = self.order if self.blink_step % 2 else []
+        if self.fast and not display.supports_fast:
+            self.fast = False
         if self.fast:
             self.landed = shown
             self._show_fast([], BLINK_PULLS)
@@ -437,7 +439,11 @@ class TetrisNametagApp(BaseApp):
             self.frame_ms = time.ticks_ms()
             self.state = _DROP
         elif self.state == _DROP:
-            if self.batch < len(self.batches):
+            if not display.supports_fast:
+                # The driver gave up on fast refresh after repeated failures.
+                print("Fast refresh stopped working, using the slideshow")
+                self._start_word(self.word)
+            elif self.batch < len(self.batches):
                 self._drop_frame()
             else:
                 self._start_blink()

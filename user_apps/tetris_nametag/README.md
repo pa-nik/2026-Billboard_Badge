@@ -57,15 +57,13 @@ half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 ## Install
 
 This app needs the newer display driver on the badge as well as the app itself.
-Badges that shipped with older firmware are missing `epd_grayscale.py`,
-`rendered_luts.py` and an updated `large_png.py`, which the fast refresh and the
-new `epd.py` rely on. Run these from the repo root (`mpremote ls :lib :data` shows
+Badges that shipped with older firmware are missing `rendered_luts.py`, which the
+fast refresh uses, and an updated `large_png.py`, which the new `epd.py` relies on. Run these from the repo root (`mpremote ls :lib :data` shows
 what is on the badge):
 
 ```
 mpremote cp firmware/badge/lib/epd.py :lib/epd.py
 mpremote cp firmware/badge/lib/epd_fast.py :lib/epd_fast.py
-mpremote cp firmware/badge/lib/epd_grayscale.py :lib/epd_grayscale.py
 mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
 mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
 mpremote cp user_apps/tetris_nametag/tetris_nametag.py :apps/tetris_nametag.py
