@@ -13,6 +13,9 @@ User A: turn the left falling piece 90 degrees clockwise (each press is one turn
 User B: turn the right falling piece 90 degrees clockwise
 Menu +/-: back to the app menu (as for every app)
 ```
+User A and User B are the two bottom buttons, A at the bottom left and B at the bottom right
+(from the PCB layout in `hardware/billboard_pcb`). The two top buttons are Menu -/+, which the
+badge firmware reserves for leaving the app, so an app cannot use them.
 Between names (while the screen is clearing or the name blinks) User A skips to the next
 name and User B restarts the current one, as before.
 

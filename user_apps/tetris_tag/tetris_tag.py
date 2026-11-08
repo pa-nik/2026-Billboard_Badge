@@ -22,6 +22,7 @@ Elsewhere the app falls back to a slideshow, one full refresh per snapshot, show
 the pieces landed (black) and the next few still in the air (red).
 """
 
+import gc
 import random
 import time
 
@@ -105,7 +106,7 @@ FLIGHT_MIN_ROWS = 2
 """Slideshow only: pieces in the air are drawn at least this many rows above
 their landing spot."""
 
-SPLIT_ATTEMPTS = 40
+SPLIT_ATTEMPTS = 10
 """Random tries at cutting each letter into pieces. Fewer pieces is better."""
 
 GLYPH_ROWS = 7
@@ -539,6 +540,7 @@ class TetrisTagApp(BaseApp):
         self.word = idx % len(NAMES)
         plan = self.plans.get(self.word)
         if plan is None:
+            gc.collect()  # planning allocates a lot; start from a clean heap
             plan = self.plans[self.word] = _Plan(NAMES[self.word])
         self.plan = plan
         if self.banner is None:
@@ -682,8 +684,10 @@ class TetrisTagApp(BaseApp):
             # Presses wait for the next refresh, which turns the piece.
             if UserA.pressed():
                 self.taps[0] += 1
+                print("User A: turn left piece")
             if UserB.pressed():
                 self.taps[1] += 1
+                print("User B: turn right piece")
         elif UserA.pressed():
             leds.fill((0, 0, 0))
             self._start_word(self.word + 1)
