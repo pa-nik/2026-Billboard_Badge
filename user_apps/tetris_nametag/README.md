@@ -21,18 +21,33 @@ Edit the top of `tetris_nametag.py`:
   how many refreshes each fall takes, and how high they start.
 * `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
 * `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below.
+* `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
 
 ## Banner
 
-A red banner runs across the top 25% of the screen, with "ТЕТРИС PAD" in white block
-letters centred on it, in the same font as the names. Change `BANNER_TEXT` or
-`BANNER_PCT` (0 removes the banner). The lettering is drawn from the app's own font,
-because the built-in LVGL fonts have no Cyrillic. Pieces fall in the space below it.
+A red banner runs across the top 25% of the screen, with "ТЕТРИС ☭  TAG" in white
+Helvetica Bold centred on it. Pieces fall in the space below it.
 
-The panel can only make red with a full refresh, so the banner is drawn by the full
+The lettering is an image, `tetris_banner.png`, not text drawn by the badge: the badge
+has no Helvetica, and its built-in font has neither Cyrillic nor the hammer and sickle.
+`make_banner.py` makes it on your computer:
+
+```
+pip install pillow fonttools
+python3 make_banner.py                                   # rewrites tetris_banner.png
+python3 make_banner.py --text "HELLO" --pct 20           # other text or height
+mpremote cp tetris_banner.png :data/graphics/tetris_banner.png
+```
+
+It sets the text in the Helvetica Bold that ships with macOS, which has the Cyrillic
+and Latin letters. Helvetica has no hammer and sickle, so that one glyph comes from a
+fallback font (Apple Symbols by default, thickened a little to match the bold letters;
+`--symbol-font` picks another). Only the rendered shapes end up in the PNG, no font file.
+`BANNER_PCT` in `tetris_nametag.py` and `--pct` must agree (25% is 168 px). If the image
+is not on the badge, the banner is a plain red band.
+
+The panel can only make red with a full refresh, so the banner is drawn once, by the full
 refresh at the start of each name, and the partial refreshes then hold it untouched.
-Whether the red stays vivid through a few hundred partial refreshes has not been
-checked on a real badge.
 
 ## Fast partial refresh
 
@@ -78,6 +93,7 @@ mpremote cp firmware/badge/lib/epd.py :lib/epd.py
 mpremote cp firmware/badge/lib/epd_fast.py :lib/epd_fast.py
 mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
 mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
+mpremote cp user_apps/tetris_nametag/tetris_banner.png :data/graphics/tetris_banner.png
 mpremote cp user_apps/tetris_nametag/tetris_nametag.py :apps/tetris_nametag.py
 mpremote reset
 ```

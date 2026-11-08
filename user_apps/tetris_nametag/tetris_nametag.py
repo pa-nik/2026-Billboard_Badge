@@ -4,8 +4,9 @@ bottom edge of the screen, the name blinks, then the next name is built.
 User A: skip to the next name
 User B: restart the current name
 
-A red banner with white block lettering runs across the top of the screen. Edit
-NAMES, BANNER_TEXT and the settings below to make it your own.
+A red banner with white Helvetica Bold lettering runs across the top of the screen.
+The lettering is an image made on a computer by make_banner.py. Edit NAMES and the
+settings below to make it your own.
 
 The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels
 with current firmware (display.supports_fast) the pieces fall in a handful of
@@ -26,18 +27,16 @@ from lib.led_bar import leds
 NAMES = ("NIK PASHENKOV", "Faberrgén")
 """Shown in turn, forever. Letters, space, and the characters in FONT below."""
 
-BANNER_TEXT = "\u0422\u0415\u0422\u0420\u0418\u0421 PAD"
-"""White lettering centred on the red banner: "ТЕТРИС PAD", the Cyrillic word for
-Tetris, then PAD in Latin letters. Drawn in the same block font as the names, so it
-only needs glyphs in FONT. Set to "" for no lettering."""
+BANNER_IMAGE = "/data/graphics/tetris_banner.png"
+"""White lettering on red, 960 px wide, made on a computer by make_banner.py and
+copied to the badge (the badge has no Helvetica, and its built-in font has neither
+Cyrillic nor the hammer and sickle). If the file is missing, the banner is a plain
+red band."""
 
 BANNER_PCT = 25
-"""Banner height as a percent of the screen height. 0 for no banner. The banner is
-red, so it is drawn by the full refresh at the start of each name, and the fast
-partial refreshes hold it untouched."""
-
-BANNER_MAX_CELL = 20
-"""Largest block size in pixels for the banner lettering."""
+"""Banner height as a percent of the screen height. 0 for no banner. Must match the
+image (make_banner.py --pct). The banner is red, so it is drawn by the full refresh
+at the start of each name, and the fast partial refreshes hold it untouched."""
 
 TARGET_FRAMES = 8
 """Roughly how many e-paper refreshes it takes to build one name.
@@ -97,8 +96,6 @@ GLYPH_ROWS = 7
 FONT = {
     " ": ("...",) * GLYPH_ROWS,
     "A": (".XXX.", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
-    "C": (".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX."),
-    "D": ("XXXX.", "X...X", "X...X", "X...X", "X...X", "X...X", "XXXX."),
     "E": ("XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "XXXXX"),
     "F": ("XXXXX", "X....", "XXXX.", "X....", "X....", "X....", "X...."),
     "H": ("X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
@@ -108,7 +105,6 @@ FONT = {
     "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
     "S": (".XXXX", "X....", "X....", ".XXX.", "....X", "....X", "XXXX."),
-    "T": ("XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "..X.."),
     "V": ("X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
     "a": (".....", ".....", ".XXX.", "....X", ".XXXX", "X...X", ".XXXX"),
     "b": ("X....", "X....", "XXXX.", "X...X", "X...X", "X...X", "XXXX."),
@@ -125,14 +121,7 @@ FONT = {
     "r": (".....", ".....", "X.XX.", "XX..X", "X....", "X....", "X...."),
     "s": (".....", ".....", ".XXXX", "X....", ".XXX.", "....X", "XXXX."),
     "v": (".....", ".....", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
-    # Cyrillic I (looks like a reversed N). The other letters of the banner word
-    # look the same as Latin ones, so they borrow those glyphs below.
-    "\u0418": ("X...X", "X..XX", "X..XX", "X.X.X", "XX..X", "XX..X", "X...X"),
 }
-FONT["\u0422"] = FONT["T"]  # Cyrillic Te
-FONT["\u0415"] = FONT["E"]  # Cyrillic Ie
-FONT["\u0420"] = FONT["P"]  # Cyrillic Er
-FONT["\u0421"] = FONT["C"]  # Cyrillic Es
 
 _BUILD = 0
 _BLINK = 1
@@ -232,29 +221,21 @@ def _split_glyph(cells):
 
 
 class _Banner:
-    """A red band across the top, with the text in white blocks centred in it."""
+    """A red band across the top, with the lettering image drawn over it."""
 
-    def __init__(self, text):
-        glyphs, cols = _text_cells(text) if text else ([], 0)
+    def __init__(self):
         self.height = display_height * BANNER_PCT // 100
-        self.cell = max(2, min(BANNER_MAX_CELL, display_width // (cols + 6),
-                               self.height // (GLYPH_ROWS + 2)))
-        self.gap = max(1, self.cell // 8)
-        text_w = cols * self.cell - self.gap
-        text_h = GLYPH_ROWS * self.cell - self.gap
-        self.x0 = (display_width - text_w) // 2
-        self.y0 = (self.height - text_h) // 2
-        self.cells = [c for glyph in glyphs for c in glyph]
 
     def draw(self):
-        """Red band in the red plane, lettering cut out of it so it shows white."""
+        """Red band in the red plane, then the white lettering on top of it. If the
+        image cannot be drawn the band stays plain red."""
         if not self.height:
             return
-        red = display.red
-        red.fill_rect(0, 0, display_width, self.height, 1)
-        size = self.cell - self.gap
-        for x, y in self.cells:
-            red.fill_rect(self.x0 + x * self.cell, self.y0 + y * self.cell, size, size, 0)
+        display.red.fill_rect(0, 0, display_width, self.height, 1)
+        try:
+            display.draw_png(BANNER_IMAGE, 0, 0)
+        except Exception as ex:  # missing file, not a palette PNG, ...
+            print("Banner image not drawn:", ex)
 
 
 class _Plan:
@@ -349,6 +330,7 @@ class TetrisNametagApp(BaseApp):
         self.fast = False
         self.plan = None
         self.banner = None
+        self.screen_ready = False
         self.order = []
         self.batch_size = 1
         self.frame = 0
@@ -368,7 +350,8 @@ class TetrisNametagApp(BaseApp):
             plan = self.plans[self.word] = _Plan(NAMES[self.word])
         self.plan = plan
         if self.banner is None:
-            self.banner = _Banner(BANNER_TEXT)
+            self.banner = _Banner()
+        self.screen_ready = False  # the next frame starts from a full clear and banner
         self.fast = FAST and getattr(display, "supports_fast", False)
         self.frame_ms = 0
         if self.fast:
@@ -390,11 +373,22 @@ class TetrisNametagApp(BaseApp):
         self.state = _BUILD
         print(f"{NAMES[self.word]}: {count} pieces, {self.frames} frames, cell {plan.cell}px")
 
+    def _new_frame(self):
+        """Blank canvas for the next frame. The banner is drawn once per name and then
+        left where it is: redrawing it would decode the image for every frame."""
+        if not self.screen_ready:
+            display.clear()
+            self.banner.draw()
+            self.screen_ready = True
+            return
+        top = self.banner.height
+        display.black.fill_rect(0, top, display_width, display_height - top, 0)
+        display.red.fill_rect(0, top, display_width, display_height - top, 0)
+
     def _show(self, landed, in_air=()):
         """Slideshow: queue a snapshot, landed pieces in black, in the air in red."""
         plan = self.plan
-        display.clear()
-        self.banner.draw()
+        self._new_frame()
         for i in landed:
             plan.draw_piece(display.black, plan.pieces[i])
         heights = plan.flight_heights(in_air)
@@ -413,8 +407,7 @@ class TetrisNametagApp(BaseApp):
         """Partial refresh: landed pieces plus the moving ones, all black.
         moving is a list of (piece, rows above its landing spot)."""
         plan = self.plan
-        display.clear()
-        self.banner.draw()
+        self._new_frame()
         for i in self.landed:
             plan.draw_piece(display.black, plan.pieces[i])
         for i, rows_up in moving:
@@ -502,8 +495,8 @@ class TetrisNametagApp(BaseApp):
         if self.state == _CLEAR:
             # The one full refresh per name: wipes the last name and any ghosts,
             # and draws the red banner, which the fast frames then hold.
-            display.clear()
-            self.banner.draw()
+            self.screen_ready = False
+            self._new_frame()
             display.update()
             self.frame_ms = time.ticks_ms()
             self.state = _DROP
