@@ -20,7 +20,7 @@ Edit the top of `tetris_tag.py`:
 * `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
   own name, or list several to cycle through them. Only characters in `FONT` can be
   shown: capitals A E F H I K M N O P R S U V Y, some lowercase, and space. Add a glyph to
-  `FONT` for any other letter (usually 5 wide, 7 tall, `X` is a block; the N is 7 wide, with a stepped diagonal).
+  `FONT` for any other letter (5 wide, 7 tall, `X` is a block).
 * `PIECES_AT_ONCE`, `SPAWN_PCT`, `ROTATE_DROP_ROWS`: how many pieces fall at a time (1 is
   one at a time), the screen height they start from, and how far they drop with each turn.
 * `FILL_ENABLED`, `FILL_COLOR`, `FILL_HOLD_MS`, `FILL_REVERSE`: the LED bar that fills as a
@@ -71,19 +71,12 @@ uses the fast partial refresh in `firmware/badge/lib/epd_fast.py`
    rows (`ROTATE_DROP_ROWS`), until it is the right way up. The refresh after that drops it
    straight into place. A square, which looks the same turned, needs no turning.
 
-   Pieces are one to four blocks joined edge to edge. The splitter avoids single-block pieces:
-   it prefers the cut with the fewest and folds lone blocks into a neighbour. A single remains
-   only where the letter forces it, a block that touches the rest of the letter only at a
-   corner (the diagonal strokes of K, N, R, V, Y). "YOUR NAME" has 5 such blocks, down from
-   about 9; to get rid of them, thicken those strokes in `FONT`.
-3. A fall is 2 to 4 refreshes. The piece is black all the way down: moving frames use
-   `HOP_PULLS` (1, so it is pale) and the landing frame `SETTLE_PULLS` (3, solid). Anything
-   left pale is topped up by the next frame.
-4. **LED bar fill (off for now, `FILL_ENABLED = False`).** When on, the bar fills from left
-   to right as the piece falls, paced to the time the whole fall takes, and is completely lit
-   exactly when the piece lands. It stays lit for `FILL_HOLD_MS`, then empties for the next
-   piece. `FILL_COLOR` sets the colour (the LEDs are bright), and `FILL_REVERSE = True` fills
-   from the other end. The end-of-name blink (below) is separate and still runs.
+   Pieces are two to four blocks, with no single-block pieces. A piece normally joins blocks
+   edge to edge, like a real Tetris piece, but where a letter needs it (the diagonal strokes
+   of K, N, R, V, Y) a piece may join two blocks that touch only at a corner, a shape the real
+   game does not have. The splitter prefers real shapes and fewer pieces. A block with nothing
+   around it at all, such as the dot of a lowercase i, would still be alone; none of the
+   built-in letters in the default name do that.
 
 Red pieces were tried (falling red, then one extra refresh to turn black) and did not work
 on the fast refresh: the fast waveform is black and white by design and cannot make a good

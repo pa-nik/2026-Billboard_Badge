@@ -125,7 +125,7 @@ FONT = {
     "I": ("XXX", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
     "K": ("X...X", "X..X.", "X.X..", "XX...", "X.X..", "X..X.", "X...X"),
     "M": ("X...X", "XX.XX", "X.X.X", "X.X.X", "X...X", "X...X", "X...X"),
-    "N": ("X.....X", "XX....X", "XX....X", "X..X..X", "X....XX", "X....XX", "X.....X"),
+    "N": ("X...X", "XX..X", "XX..X", "X.X.X", "X..XX", "X..XX", "X...X"),
     "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
     "R": ("XXXX.", "X...X", "X...X", "XXXX.", "X.X..", "X..X.", "X...X"),
@@ -167,6 +167,12 @@ def _neighbors(c):
     return ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
 
 
+def _around(c):
+    """The eight cells around c, the four that share an edge first."""
+    x, y = c
+    return _neighbors(c) + ((x + 1, y + 1), (x - 1, y - 1), (x + 1, y - 1), (x - 1, y + 1))
+
+
 def _text_cells(text):
     """The cells (x, y) of each letter on a grid GLYPH_ROWS tall, and the text width."""
     glyphs = []
@@ -185,14 +191,16 @@ def _text_cells(text):
 
 
 def _greedy_split(cells):
-    """Cut cells into connected pieces of up to four, hardest-to-fill cells first."""
+    """Cut cells into pieces of up to four, hardest-to-fill cells first. A piece prefers
+    cells that share an edge, but may reach across a corner, so a diagonal stroke can be
+    cut into pieces of two."""
     free = set(cells)
     pieces = []
     while free:
         best = None
-        best_n = 5
+        best_n = 9
         for c in free:
-            n = sum(1 for nb in _neighbors(c) if nb in free)
+            n = sum(1 for nb in _around(c) if nb in free)
             if n < best_n or (n == best_n and random.randrange(2)):
                 best, best_n = c, n
         piece = [best]
@@ -204,6 +212,11 @@ def _greedy_split(cells):
                     if nb in free and nb not in options:
                         options.append(nb)
             if not options:
+                for pc in piece:
+                    for nb in _around(pc)[4:]:
+                        if nb in free and nb not in options:
+                            options.append(nb)
+            if not options:
                 break
             nxt = random.choice(options)
             piece.append(nxt)
@@ -212,12 +225,13 @@ def _greedy_split(cells):
     return _absorb_singles(pieces)
 
 
-def _connected(cells):
-    """True if the cells touch edge to edge as one group."""
+def _connected(cells, corners=True):
+    """True if the cells touch as one group, by edges only unless corners is True."""
     rest = set(cells)
     stack = [rest.pop()]
     while stack:
-        for nb in _neighbors(stack.pop()):
+        c = stack.pop()
+        for nb in (_around(c) if corners else _neighbors(c)):
             if nb in rest:
                 rest.discard(nb)
                 stack.append(nb)
@@ -225,15 +239,15 @@ def _connected(cells):
 
 
 def _absorb_singles(pieces):
-    """Fold lone cells into a neighbouring piece: join one that has room, or take a cell
-    off a bigger one that stays whole without it. A cell touching no other cell by an edge
-    (a diagonal stroke) stays alone, since no piece can hold it."""
+    """Fold lone cells into a piece next to them (edge or corner): join one that has room,
+    or take a cell off a bigger one that stays whole without it. A cell with nothing
+    around it stays alone."""
     changed = True
     while changed:
         changed = False
         for single in [p for p in pieces if len(p) == 1]:
             cell = single[0]
-            for nb in _neighbors(cell):
+            for nb in _around(cell):
                 other = None
                 for q in pieces:
                     if nb in q and q is not single:
@@ -286,8 +300,11 @@ def _split_glyph(cells):
     best_score = None
     for _ in range(SPLIT_ATTEMPTS):
         pieces = _greedy_split(cells)
-        # Fewest single blocks first, then fewest pieces.
-        score = (sum(1 for p in pieces if len(p) == 1), len(pieces))
+        # Fewest single blocks first, then fewest pieces held together only by a corner
+        # (not like a real Tetris piece), then fewest pieces.
+        score = (sum(1 for p in pieces if len(p) == 1),
+                 sum(1 for p in pieces if not _connected(p, False)),
+                 len(pieces))
         if best is not None and score >= best_score:
             continue
         before = _land_order(pieces)
