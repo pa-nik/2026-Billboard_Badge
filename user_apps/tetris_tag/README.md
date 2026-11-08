@@ -1,17 +1,32 @@
 # Tetris Tag
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
-the screen. The name blinks three times, then it is built again, and it loops forever.
-It ships with the placeholder "YOUR NAME"; put your own in `NAMES` (see below).
+the screen, two at a time, and you steer them. The name blinks three times, then it is
+built again, and it loops forever. It ships with the placeholder "YOUR NAME"; put your
+own in `NAMES` (see below).
 
 Author: Nikita Pashenkov, <https://github.com/pa-nik>
 
 Controls:
 ```
-User A: skip to the next name (restarts it when `NAMES` has just one)
-User B: restart the current name
+User A: turn the left falling piece 90 degrees clockwise (each press is one turn)
+User B: turn the right falling piece 90 degrees clockwise
 Menu +/-: back to the app menu (as for every app)
 ```
+Between names (while the screen is clearing or the name blinks) User A skips to the next
+name and User B restarts the current one, as before.
+
+## How to play
+
+Two pieces appear together at 25% of the screen height, each turned a random quarter
+turn. They fall a few rows per refresh (about 1.4 s) **without turning** until you turn
+them. Press User A for the piece on the left and User B for the one on the right; each
+press turns it 90 degrees clockwise at the next refresh. When a piece is the right way up
+it drops into its place on the next refresh. A piece you leave alone turns itself,
+90 degrees a refresh by the shorter way, once it reaches 50% of the screen height
+(`AUTO_TURN_PCT`), so the game plays itself if nobody presses. Buttons only count above
+that line. Each piece stays in its own half of the screen while it is falling, so the two
+never collide. When one piece is alone (the last of a letter), either button turns it.
 
 ## Make it your own
 
@@ -21,10 +36,9 @@ Edit the top of `tetris_tag.py`:
   own name, or list several to cycle through them. Only characters in `FONT` can be
   shown: capitals A E F H I K M N O P R S U V Y, some lowercase, and space. Add a glyph to
   `FONT` for any other letter (5 wide, 7 tall, `X` is a block).
-* `PIECES_AT_ONCE`, `SPAWN_PCT`, `ROTATE_DROP_ROWS`: how many pieces fall at a time (1 is
-  one at a time), the screen height they start from, and how far they drop with each turn.
-* `FILL_ENABLED`, `FILL_COLOR`, `FILL_HOLD_MS`, `FILL_REVERSE`: the LED bar that fills as a
-  piece falls. `FILL_ENABLED` is `False` on this branch for now.
+* `PIECES_AT_ONCE`, `SPAWN_PCT`, `FALL_ROWS`, `AUTO_TURN_PCT`: how many pieces fall at a time
+  (1 or 2), the screen height they start from, how far they fall each refresh, and the
+  screen height where an unturned piece starts turning itself.
 * `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
 * `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below.
 * `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
@@ -64,34 +78,29 @@ uses the fast partial refresh in `firmware/badge/lib/epd_fast.py`
 
 1. Each name starts with one full refresh to a blank field. That is the "clear
    screen" step, and it also wipes any ghosting.
-2. The pieces then fall one at a time, like the real game (`PIECES_AT_ONCE`, 1 by
-   default; see below for more). The piece appears at `SPAWN_PCT` (25%) down from the top of
-   the screen, which is the bottom edge of the banner, turned a random quarter turn (90, 180
-   or 270 degrees). Each refresh after that turns it another 90 degrees, dropping it a few
-   rows (`ROTATE_DROP_ROWS`), until it is the right way up. The refresh after that drops it
-   straight into place. A square, which looks the same turned, needs no turning.
-
+2. The pieces then fall two at a time (see How to play). A fall is one refresh to show the
+   pieces, a few more while they fall and turn, and one to drop each into place. A square,
+   which looks the same turned, is never turned and drops straight away.
    Pieces are two to four blocks, with no single-block pieces. A piece normally joins blocks
    edge to edge, like a real Tetris piece, but where a letter needs it (the diagonal strokes
    of K, N, R, V, Y) a piece may join two blocks that touch only at a corner, a shape the real
    game does not have. The splitter prefers real shapes and fewer pieces. A block with nothing
    around it at all, such as the dot of a lowercase i, would still be alone; none of the
    built-in letters in the default name do that.
+3. Moving frames use `HOP_PULLS` (1, so the piece is pale while it moves) and the frame where
+   a piece lands `SETTLE_PULLS` (3, solid). Anything left pale is topped up by the next frame.
+   There is no LED fill any more; the LEDs only blink at the end of a name.
 
 Red pieces were tried (falling red, then one extra refresh to turn black) and did not work
 on the fast refresh: the fast waveform is black and white by design and cannot make a good
 red on this panel. The red banner is unaffected: it is held, not driven.
 
-Speed. Each refresh moves only what is on screen, so one piece at a time is the slow way: a
-name like "YOUR NAME" (46 pieces) is about 120 refreshes. In simulation the falling time per
-pass (plus the full-screen refresh at the start, about 37 s, which cannot be made faster) is
-about 275 s one piece at a time and about 105 s three at a time.
-
-Raising `PIECES_AT_ONCE` makes several pieces fall in the same refreshes (a "wave"); past about
-10 at once it stops helping, since pieces wait for the ones below them. A piece joins a wave
-only if it can never land on another piece of that wave in the air, and only once the pieces it
-rests on have landed. These times are the simulator's; the app prints `refresh ms:` over serial
-after every frame, so you can see the real ones.
+Speed. A pass of "YOUR NAME" is 37 pieces in about 19 waves. In simulation the falling time per pass
+(plus the full-screen refresh at the start, about 37 s, which cannot be made faster) is
+about 235 s if nobody presses a button and less if you turn the pieces (about 195 s with some
+random presses): a piece you turn right way up early drops sooner. These times are the
+simulator's; the app prints `refresh ms:` over serial after every frame, so you can see the
+real ones.
 
 If
 the badge is not a B1 panel, or the firmware does not have `epd_fast.py`, the app

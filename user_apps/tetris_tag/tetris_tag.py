@@ -2,22 +2,24 @@
 bottom edge of the screen, the name blinks, then it is built again (or the next
 name, if NAMES lists more than one).
 
-User A: skip to the next name (restarts it when NAMES has just one)
-User B: restart the current name
+User A: turn the left falling piece 90 degrees clockwise
+User B: turn the right falling piece 90 degrees clockwise
+(between names, User A skips to the next name and User B restarts the current one)
 
 A red banner with white Helvetica Bold lettering runs across the top of the screen.
 The lettering is an image made on a computer by make_banner.py. Edit NAMES and the
 settings below to make it your own.
 
 The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels
-with current firmware (display.supports_fast) the pieces fall one at a time, like the
-real game, in a few partial refreshes each (see lib/epd_fast.py): the screen is cleared
-with one full refresh, then only the pixels that change are redrawn. A piece appears at
-25% of the screen height turned a random quarter turn, turns 90 degrees per
-refresh until it is the right way up, then drops into place. (An LED bar fill that
-follows the fall is built in but switched off, see FILL_ENABLED.) Elsewhere it falls
-back to a slideshow, one full refresh per snapshot, showing the pieces landed (black)
-and the next few still in the air (red).
+with current firmware (display.supports_fast) two pieces fall at a time, like a
+two-player Tetris, in partial refreshes (see lib/epd_fast.py): the screen is cleared
+with one full refresh, then only the pixels that change are redrawn. Both pieces appear
+at 25% of the screen height turned a random quarter turn and fall without turning.
+User A turns the left piece and User B the right one, 90 degrees clockwise per press.
+Once a piece is the right way up it drops into place on the next refresh. A piece
+nobody has turned starts turning itself when it reaches 50% of the screen height.
+Elsewhere the app falls back to a slideshow, one full refresh per snapshot, showing
+the pieces landed (black) and the next few still in the air (red).
 """
 
 import random
@@ -26,7 +28,7 @@ import time
 from apps.base_app import BaseApp
 from lib.button import UserA, UserB
 from lib.epd import display, display_width, display_height
-from lib.led_bar import NUM_LEDS, leds
+from lib.led_bar import leds
 
 NAMES = ("YOUR NAME",)
 """Shown in turn, forever. Replace "YOUR NAME" with your own, using only the characters
@@ -70,32 +72,24 @@ FAST = True
 """Use partial refreshes where the panel and firmware support them. False forces
 the slideshow."""
 
-PIECES_AT_ONCE = 1
-"""Pieces falling at the same time. 1 is like the real game: one piece falls, turns
-and lands, then the next. Higher is much faster, because a refresh then moves several
-pieces at once (9 is about seven times faster), but pieces fall in crowds. A piece only
-joins a wave if it cannot land on another piece in the air."""
-
-FILL_ENABLED = False
-"""The LED bar filling while a piece falls. Off on this branch for now; the finished-name
-blink (BLINK_MODE) is separate and still runs."""
-
-FILL_COLOR = (20, 20, 20)
-"""Colour the LEDs fill with while a piece falls. They are bright, so keep it low."""
-
-FILL_HOLD_MS = 400
-"""How long every LED stays lit after a piece lands, before they empty for the next."""
-
-FILL_REVERSE = False
-"""Fill from the other end, if the LED bar fills right to left on your badge."""
+PIECES_AT_ONCE = 2
+"""Pieces falling at the same time: 1 or 2. With 2, User A turns the left one and User
+B the right one (with 1, either button turns it). Two pieces only fall together if
+they land in separate columns, and each stays on its own side of the screen while it
+is in the air."""
 
 SPAWN_PCT = 25
 """Every piece appears at this percent of the screen height, measured from the top.
 25 is the bottom edge of the banner. It is never put inside the banner."""
 
-ROTATE_DROP_ROWS = 3
-"""Rows a piece drops during each 90 degree turn on its way down. Once it is turned
-the right way up it falls the rest of the way into place in one refresh."""
+FALL_ROWS = 3
+"""Rows a piece falls in each refresh while it is turning or waiting to be turned.
+Once it is the right way up it falls the rest of the way into place in one refresh."""
+
+AUTO_TURN_PCT = 50
+"""A piece that is still not the right way up turns itself, 90 degrees a refresh by the
+shorter way round, once it reaches this percent of the screen height. Buttons only turn
+a piece above this line."""
 
 HOP_PULLS = 1
 """Drive steps (about 1.1 s each) for frames while a piece is moving. 1 is
@@ -149,12 +143,6 @@ FONT = {
     "s": (".....", ".....", ".XXXX", "X....", ".XXX.", "....X", "XXXX."),
     "v": (".....", ".....", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
 }
-
-# Rough time of one partial refresh, used only to pace the LED fill: about 1.17 s a
-# drive step plus the data transfer. Measured on a badge; the real times print as
-# "refresh ms:".
-_PULL_MS = 1170
-_FRAME_MS = 220
 
 _BUILD = 0
 _BLINK = 1
@@ -326,18 +314,65 @@ def _turn(shape):
     return sorted((x - left, y - top) for x, y in turned)
 
 
-def _clash(a, b):
-    """Do two falls ever put a block on the same cell in the same frame? A fall
-    that has landed stays where it is for the rest of the wave."""
-    for frame in range(max(len(a), len(b))):
-        if set(a[min(frame, len(a) - 1)]) & set(b[min(frame, len(b) - 1)]):
-            return True
-    return False
+class _Flier:
+    """A piece on its way down: turned some way, in its own columns, at some row."""
 
+    def __init__(self, plan, i, lane, side):
+        cells = plan.pieces[i]
+        self.plan = plan
+        self.i = i
+        self.lane = lane
+        self.side = side
+        self.left = min(x for x, _ in cells)
+        self.top = min(y for _, y in cells)
+        final = sorted((x - self.left, y - self.top) for x, y in cells)
+        self.width = max(x for x, _ in final) + 1
+        self.shapes = [final]  # shapes[n]: the landed shape turned n quarter turns clockwise
+        for _ in range(3):
+            self.shapes.append(_turn(self.shapes[-1]))
+        self.rot = random.randint(1, 3)
+        self.way = random.choice((1, -1))  # which way to turn when both ways are as short
+        self.row = plan.spawn_row
+        self.landed = False
+        self.cells = self._place()
 
-def _fall_pulls(frame, landing):
-    """Drive steps for frame `frame` of a fall whose landing frame is `landing`."""
-    return SETTLE_PULLS if frame == landing else HOP_PULLS
+    def upright(self):
+        return self.shapes[self.rot] == self.shapes[0]
+
+    def _place(self):
+        """Cells at the current turn and row, centred over the landing spot but kept
+        inside this piece's lane."""
+        shape = self.shapes[self.rot]
+        w = max(x for x, _ in shape) + 1
+        x = max(self.lane[0], min(self.left + (self.width - w) // 2, self.lane[1] - w))
+        return [(x + sx, self.row + sy) for sx, sy in shape]
+
+    def _auto_turn(self):
+        """+1 or -1: the shorter way round to the right way up."""
+        cw = 1
+        while self.shapes[(self.rot + cw) % 4] != self.shapes[0]:
+            cw += 1
+        ccw = 1
+        while self.shapes[(self.rot - ccw) % 4] != self.shapes[0]:
+            ccw += 1
+        if cw == ccw:
+            return self.way
+        return 1 if cw < ccw else -1
+
+    def step(self, turns, auto_row):
+        """Move on one refresh. A piece that is the right way up drops into place;
+        otherwise it falls FALL_ROWS, turned by the player's presses if it is still above
+        auto_row, and by itself once it has fallen to auto_row."""
+        if self.upright():
+            self.landed = True
+            self.cells = list(self.plan.pieces[self.i])
+            return
+        if turns and self.row < auto_row:
+            self.rot = (self.rot + turns) % 4
+        self.row = min(self.row + FALL_ROWS, self.top)
+        if not self.upright() and self.row >= auto_row:
+            self.rot = (self.rot + self._auto_turn()) % 4
+        self.cells = self._place()
 
 
 class _Banner:
@@ -397,56 +432,51 @@ class _Plan:
             order.append(pick)
         return order
 
-    def make_fall(self, i):
-        """Where piece i is drawn in each frame of its fall, as a list of cell lists.
+    def span(self, i):
+        """Columns piece i covers when landed: (first, one past the last)."""
+        xs = [x for x, _ in self.pieces[i]]
+        return min(xs), max(xs) + 1
 
-        It appears at the spawn height turned a random quarter turn, then turns 90
-        degrees per frame (the shorter way round, dropping ROTATE_DROP_ROWS each time)
-        until its shape matches its final orientation. The last entry is where it
-        lands, so the frame after it is turned the right way up it drops into place. A
-        piece that looks the same turned, like a square, needs fewer turns or none."""
-        cells = self.pieces[i]
-        left = min(x for x, _ in cells)
-        top = min(y for _, y in cells)
-        final = sorted((x - left, y - top) for x, y in cells)
-        width = max(x for x, _ in final) + 1
-        shapes = [final]  # shapes[n]: the final shape turned n quarter turns clockwise
-        for _ in range(3):
-            shapes.append(_turn(shapes[-1]))
-        turns = random.randint(1, 3)
-        step = 1 if turns == 3 else (-1 if turns == 1 else random.choice((1, -1)))
-        path = [turns]
-        while shapes[path[-1]] != final:
-            path.append((path[-1] + step) % 4)
-        frames = []
-        for n, turned in enumerate(path):
-            shape = shapes[turned]
-            w = max(x for x, _ in shape) + 1
-            x = max(self.min_x, min(left + (width - w) // 2, self.max_x - w))
-            y = min(self.spawn_row + ROTATE_DROP_ROWS * n, top)
-            frames.append([(x + sx, y + sy) for sx, sy in shape])
-        frames.append(list(cells))
-        return frames
+    def reach(self, i):
+        """The most columns piece i covers in any orientation."""
+        xs = [x for x, _ in self.pieces[i]]
+        ys = [y for _, y in self.pieces[i]]
+        return max(max(xs) - min(xs), max(ys) - min(ys)) + 1
+
+    def lanes(self, wave):
+        """The columns (first, one past the last) each piece of a wave of one or two may
+        use while it is in the air, left piece first. None if they cannot be kept apart."""
+        if len(wave) == 1:
+            return [(self.min_x, self.max_x)]
+        (a0, a1), (b0, b1) = self.span(wave[0]), self.span(wave[1])
+        low = max(a1, self.min_x + self.reach(wave[0]))
+        high = min(b0, self.max_x - self.reach(wave[1]))
+        if low > high:
+            return None
+        edge = (low + high) // 2
+        return [(self.min_x, edge), (edge, self.max_x)]
 
     def land_waves(self, at_most):
-        """The pieces grouped into waves that fall together, each a list of
-        (piece, frames). A wave only takes pieces whose supports have already landed,
-        so none waits on another, and a piece joins only if it never lands on one
-        already in the wave, in any frame."""
+        """The pieces grouped into waves of one or two that fall together, each a list
+        of piece numbers, left piece first. A wave only takes pieces whose supports have
+        already landed, so none waits on another, and two share a wave only if they can
+        be kept in separate columns on the way down."""
         done = set()
         waves = []
         while len(done) < len(self.pieces):
             ready = [i for i in range(len(self.pieces))
                      if i not in done and self.before[i] <= done]
-            wave = []
-            while ready and len(wave) < at_most:
-                pick = random.choice(ready)
-                ready.remove(pick)
-                frames = self.make_fall(pick)
-                if any(_clash(frames, other) for _, other in wave):
-                    continue
-                wave.append((pick, frames))
-            done.update(i for i, _ in wave)
+            first = random.choice(ready)
+            ready.remove(first)
+            wave = [first]
+            while at_most >= 2 and ready:
+                other = random.choice(ready)
+                ready.remove(other)
+                pair = sorted((first, other), key=lambda i: self.span(i)[0])
+                if self.span(pair[0])[1] <= self.span(pair[1])[0] and self.lanes(pair):
+                    wave = pair
+                    break
+            done.update(wave)
             waves.append(wave)
         return waves
 
@@ -502,10 +532,8 @@ class TetrisTagApp(BaseApp):
         self.blink_step = 0
         self.blink_ms = 0
         self.frame_ms = 0
-        self.led_n = -1  # LEDs lit now; -1 means unknown, so the next write goes out
-        self.led_ramp = None  # (start ms, duration ms, from, to) of the fill in progress
-        self.led_last = False  # the frame in progress is the one that lands the piece
-        self.led_hold = None  # ticks_ms until which the full bar stays lit, if any
+        self.fliers = []  # the pieces of the current wave in the air
+        self.taps = [0, 0]  # presses of User A and User B since the last refresh
 
     def _start_word(self, idx):
         self.word = idx % len(NAMES)
@@ -516,20 +544,17 @@ class TetrisTagApp(BaseApp):
         if self.banner is None:
             self.banner = _Banner()
         self.screen_ready = False  # the next frame starts from a full clear and banner
-        self.led_n, self.led_ramp, self.led_last = -1, None, False
         self.fast = FAST and getattr(display, "supports_fast", False)
         self.frame_ms = 0
         if self.fast:
             self.waves = plan.land_waves(max(1, PIECES_AT_ONCE))
-            self.order = [i for wave in self.waves for i, _ in wave]
+            self.order = [i for wave in self.waves for i in wave]
             self.batch = 0
             self.frame = 0
             self.landed = []
             self.state = _CLEAR
-            refreshes = sum(max(len(frames) for _, frames in wave)
-                            for wave in self.waves)
             print(f"{NAMES[self.word]}: {len(self.order)} pieces in {len(self.waves)} waves, "
-                  f"{refreshes} partial refreshes, cell {plan.cell}px")
+                  f"cell {plan.cell}px")
             return
         self.order = plan.land_sequence()
         count = len(self.order)
@@ -582,57 +607,33 @@ class TetrisTagApp(BaseApp):
         display.update(fast=True, pulls=pulls)
         self.frame_ms = time.ticks_ms()
 
-    def _set_leds(self, n):
-        """Light the first n LEDs (the last n with FILL_REVERSE), the rest off."""
-        n = max(0, min(NUM_LEDS, n))
-        if n == self.led_n:
-            return
-        self.led_n = n
-        for i in range(NUM_LEDS):
-            on = i >= NUM_LEDS - n if FILL_REVERSE else i < n
-            leds[i] = FILL_COLOR if on else (0, 0, 0)
-        leds.write()
-
-    def _start_fill(self, frame, last):
-        """As frame `frame` of a fall (the landing frame is `last`) is queued, start the
-        LEDs filling, paced to the time the whole fall takes so the bar is full just as
-        the piece lands. The bar from the last piece stays lit for FILL_HOLD_MS first."""
-        if not FILL_ENABLED:
-            return
-        spans = [_fall_pulls(k, last) * _PULL_MS + _FRAME_MS for k in range(last + 1)]
-        total = sum(spans)
-        now = time.ticks_ms()
-        start = now
-        if frame == 0 and self.led_hold is not None and time.ticks_diff(self.led_hold, now) > 0:
-            start = self.led_hold
-        length = spans[frame] - time.ticks_diff(start, now)
-        self.led_ramp = (start, max(1, length),
-                         NUM_LEDS * sum(spans[:frame]) / total,
-                         NUM_LEDS * sum(spans[:frame + 1]) / total)
-        self.led_last = frame == last
-
-    def _tick_leds(self):
-        """Move the fill along. Never shows a full bar before the piece has landed."""
-        if self.led_ramp is None:
-            return
-        start, length, a, b = self.led_ramp
-        elapsed = time.ticks_diff(time.ticks_ms(), start)
-        if elapsed < 0:
-            return  # still holding the full bar from the last piece
-        level = a + (b - a) * min(1.0, elapsed / length)
-        self._set_leds(min(int(level), NUM_LEDS - 1))
-
     def _drop_frame(self):
-        """One partial refresh of the current wave: the pieces appear at the spawn
-        height turned a random way, turn 90 degrees a frame until they are the right
-        way up, then drop into place."""
+        """One partial refresh of the current wave. The first one shows the pieces at
+        the spawn height, turned a random way. After that each piece that is not yet the
+        right way up falls a few rows, turned by its player if they pressed a button,
+        or by itself once it is low enough. A piece that is the right way up drops into
+        place."""
         wave = self.waves[self.batch]
-        landing = max(len(frames) for _, frames in wave) - 1  # last refresh of the fall
-        moving = [frames[min(self.frame, len(frames) - 1)] for _, frames in wave]
-        self._show_fast(moving, _fall_pulls(self.frame, landing))
-        self._start_fill(self.frame, landing)
-        if self.frame == landing:
-            self.landed.extend(i for i, _ in wave)
+        landing = False  # a piece drops into place in this refresh
+        if self.frame == 0:
+            lanes = self.plan.lanes(wave)
+            self.fliers = [_Flier(self.plan, i, lanes[n], n) for n, i in enumerate(wave)]
+            self.taps = [0, 0]
+        else:
+            auto_row = display_height * AUTO_TURN_PCT // 100 // self.plan.cell
+            for f in self.fliers:
+                if len(self.fliers) == 1:
+                    turns = self.taps[0] + self.taps[1]
+                else:
+                    turns = self.taps[f.side]
+                was = f.landed
+                f.step(turns % 4, auto_row)
+                landing = landing or (f.landed and not was)
+            self.taps = [0, 0]
+        pulls = SETTLE_PULLS if landing else HOP_PULLS
+        self._show_fast([f.cells for f in self.fliers], pulls)
+        if all(f.landed for f in self.fliers):
+            self.landed.extend(wave)
             self.batch += 1
             self.frame = 0
         else:
@@ -642,7 +643,6 @@ class TetrisTagApp(BaseApp):
         self.state = _BLINK
         self.blink_step = 0
         self.blink_ms = time.ticks_ms()
-        self.led_n, self.led_ramp, self.led_last = -1, None, False
         if BLINK_MODE == "leds":
             leds.fill(BLINK_COLOR)
 
@@ -678,27 +678,22 @@ class TetrisTagApp(BaseApp):
             self._start_word(0)
             return
 
-        if UserA.pressed():
+        if self.state == _DROP and self.fast:
+            # Presses wait for the next refresh, which turns the piece.
+            if UserA.pressed():
+                self.taps[0] += 1
+            if UserB.pressed():
+                self.taps[1] += 1
+        elif UserA.pressed():
             leds.fill((0, 0, 0))
             self._start_word(self.word + 1)
         elif UserB.pressed():
             leds.fill((0, 0, 0))
             self._start_word(self.word)
 
-        # Fast refreshes leave the LEDs alone, so the fill can carry on while one runs.
-        if self.state == _DROP:
-            self._tick_leds()
-
         # A refresh in progress owns the framebuffers.
         if not display.is_done_updating():
             return
-
-        if self.led_last and FILL_ENABLED:
-            # The piece has landed: every LED lit, held briefly before the next piece.
-            self.led_last = False
-            self.led_ramp = None
-            self._set_leds(NUM_LEDS)
-            self.led_hold = time.ticks_add(time.ticks_ms(), FILL_HOLD_MS)
 
         if self.frame_ms:
             print("refresh ms:", time.ticks_diff(time.ticks_ms(), self.frame_ms))
