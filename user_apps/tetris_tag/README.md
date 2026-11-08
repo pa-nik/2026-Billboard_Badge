@@ -4,8 +4,8 @@ Tetris Tag takes inspiration from Tetris to assemble your name on the badge. Use
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
 the screen, two at a time, and you steer them. The name blinks three times, stays up for
-30 seconds, then it is built again, and it loops forever. It ships with the placeholder "YOUR NAME"; put your
-own in `NAMES` (see below).
+30 seconds, then it is built again, and it loops forever. It ships with the placeholder
+"YOUR NAME"; put your own in `NAMES` (see below).
 
 Author: Nikita Pashenkov, <https://github.com/pa-nik>
 
@@ -13,15 +13,27 @@ Concept by the Soviet people, execution by [pa-nik](https://github.com/pa-nik) a
 
 Controls:
 ```
-User A: turn the left falling piece 90 degrees clockwise (each press is one turn)
-User B: turn the right falling piece 90 degrees clockwise
+User A: turn the left falling piece 90 degrees clockwise (bottom left button)
+User B: turn the right falling piece 90 degrees clockwise (bottom right button)
 Menu +/-: back to the app menu (as for every app)
 ```
-User A and User B are the two bottom buttons, A at the bottom left and B at the bottom right
-(from the PCB layout in `hardware/billboard_pcb`). The two top buttons are Menu -/+, which the
-badge firmware reserves for leaving the app, so an app cannot use them.
-Between names (while the screen is clearing, the name blinks or the finished name is held) User A skips to the next
-name and User B restarts the current one, as before.
+The two top buttons are Menu -/+, which the badge firmware reserves for leaving an app, so
+the game uses the two bottom ones (positions from the PCB layout in `hardware/billboard_pcb`).
+Between names (while the screen is clearing, the name blinks or the finished name is held)
+User A skips to the next name and User B restarts the current one.
+
+To install, run this from the root of the repo (the app also needs the newer display driver
+and its banner image; see Installing below):
+```
+mpremote cp firmware/badge/lib/epd.py :lib/epd.py
+mpremote cp firmware/badge/lib/epd_fast.py :lib/epd_fast.py
+mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
+mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
+mpremote cp user_apps/tetris_tag/tetris_banner.png :data/graphics/tetris_banner.png
+mpremote cp user_apps/tetris_tag/tetris_tag.py :apps/tetris_tag.py
+mpremote reset
+```
+Then select "Tetris Tag" from the menu.
 
 ## How to play
 
@@ -39,17 +51,17 @@ never collide. When one piece is alone (the last of a letter), either button tur
 
 Edit the top of `tetris_tag.py`:
 
-* `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
+- `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
   own name, or list several to cycle through them. Only characters in `FONT` can be
   shown: capitals A E F H I K M N O P R S U V Y, some lowercase, and space. Add a glyph to
   `FONT` for any other letter (5 wide, 7 tall, `X` is a block).
-* `PIECES_AT_ONCE`, `SPAWN_PCT`, `FALL_ROWS`, `AUTO_TURN_PCT`: how many pieces fall at a time
+- `PIECES_AT_ONCE`, `SPAWN_PCT`, `FALL_ROWS`, `AUTO_TURN_PCT`: how many pieces fall at a time
   (1 or 2), the screen height they start from, how far they fall each refresh, and the
   screen height where an unturned piece starts turning itself.
-* `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
-* `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below. `HOLD_S`: how long the finished name
+- `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
+- `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below. `HOLD_S`: how long the finished name
   stays up after the blinking (30 s).
-* `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
+- `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
 
 ## Banner
 
@@ -126,24 +138,14 @@ When the blinking is over the finished name stays on the screen, untouched, for 
 seconds (30) before the next round starts with a full-screen clear. User A skips the wait to
 the next name and User B restarts the current one right away.
 
-## Install
+## Installing
 
-This app needs the newer display driver on the badge as well as the app itself.
-Badges that shipped with older firmware are missing `rendered_luts.py`, which the
-fast refresh uses, and an updated `large_png.py`, which the new `epd.py` relies on. Run these from the repo root (`mpremote ls :lib :data` shows
-what is on the badge):
-
-```
-mpremote cp firmware/badge/lib/epd.py :lib/epd.py
-mpremote cp firmware/badge/lib/epd_fast.py :lib/epd_fast.py
-mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
-mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
-mpremote cp user_apps/tetris_tag/tetris_banner.png :data/graphics/tetris_banner.png
-mpremote cp user_apps/tetris_tag/tetris_tag.py :apps/tetris_tag.py
-mpremote reset
-```
-
-Then select "Tetris Tag" from the menu.
+The commands at the top copy the app, its banner image and the display files it needs.
+The app needs the newer display driver on the badge as well as the app itself. Badges that
+shipped with older firmware are missing `rendered_luts.py`, which the fast refresh uses, and
+an updated `large_png.py`, which the new `epd.py` relies on. `mpremote ls :lib :data` shows
+what is on the badge. After the first install only `tetris_tag.py` changes, so
+`mpremote cp user_apps/tetris_tag/tetris_tag.py :apps/tetris_tag.py` and a reset is enough.
 
 If you installed this app under its earlier name, Tetris Nametag, remove the old file
 first or the badge will list both: `mpremote rm :apps/tetris_nametag.py`.
