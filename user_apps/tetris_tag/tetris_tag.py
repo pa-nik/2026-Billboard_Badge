@@ -1,4 +1,4 @@
-"""Tetris Nametag. Tetris-like pieces fall and stack up to spell a name along the
+"""Tetris Tag. Tetris-like pieces fall and stack up to spell a name along the
 bottom edge of the screen, the name blinks, then it is built again (or the next
 name, if NAMES lists more than one).
 
@@ -389,9 +389,9 @@ class _Plan:
         return heights
 
 
-class TetrisNametagApp(BaseApp):
+class TetrisTagApp(BaseApp):
     def __init__(self, name: str | None = None) -> None:
-        self.name = "Tetris Name"
+        self.name = "Tetris Tag"
         self.sleep_ms = 25
         self.launched = False
         self.plans = {}

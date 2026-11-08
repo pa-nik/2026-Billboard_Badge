@@ -1,4 +1,4 @@
-# Tetris Nametag
+# Tetris Tag
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
 the screen. The name blinks three times, then it is built again, and it loops forever.
@@ -13,7 +13,7 @@ Menu +/-: back to the app menu (as for every app)
 
 ## Make it your own
 
-Edit the top of `tetris_nametag.py`:
+Edit the top of `tetris_tag.py`:
 
 * `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
   own name, or list several to cycle through them. Only characters in `FONT` can be
@@ -45,7 +45,7 @@ It sets the text in the Helvetica Bold that ships with macOS, which has the Cyri
 and Latin letters. Helvetica has no hammer and sickle, so that one glyph comes from a
 fallback font (Apple Symbols by default, thickened a little to match the bold letters;
 `--symbol-font` picks another). Only the rendered shapes end up in the PNG, no font file.
-`BANNER_PCT` in `tetris_nametag.py` and `--pct` must agree (25% is 168 px). If the image
+`BANNER_PCT` in `tetris_tag.py` and `--pct` must agree (25% is 168 px). If the image
 is not on the badge, the banner is a plain red band.
 
 The panel can only make red with a full refresh, so the banner is drawn once, by the full
@@ -106,12 +106,15 @@ mpremote cp firmware/badge/lib/epd.py :lib/epd.py
 mpremote cp firmware/badge/lib/epd_fast.py :lib/epd_fast.py
 mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
 mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
-mpremote cp user_apps/tetris_nametag/tetris_banner.png :data/graphics/tetris_banner.png
-mpremote cp user_apps/tetris_nametag/tetris_nametag.py :apps/tetris_nametag.py
+mpremote cp user_apps/tetris_tag/tetris_banner.png :data/graphics/tetris_banner.png
+mpremote cp user_apps/tetris_tag/tetris_tag.py :apps/tetris_tag.py
 mpremote reset
 ```
 
-Then select "Tetris Name" from the menu.
+Then select "Tetris Tag" from the menu.
+
+If you installed this app under its earlier name, Tetris Nametag, remove the old file
+first or the badge will list both: `mpremote rm :apps/tetris_nametag.py`.
 
 Alternatively, `python scripts/update.py push` from `firmware/` brings the whole badge up
 to date, but it deletes anything on the badge that is not in `firmware/badge/`,

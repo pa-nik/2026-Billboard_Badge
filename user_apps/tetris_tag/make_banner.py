@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the Tetris Nametag banner: white text on a red band, saved as a 1-bit
+"""Render the Tetris Tag banner: white text on a red band, saved as a 1-bit
 palette PNG that the badge draws with display.draw_png.
 
 Run this on your computer, not on the badge:
@@ -15,7 +15,7 @@ then copy the result to the badge:
 The text is set in Helvetica Bold. Helvetica has no hammer and sickle, so any
 character it lacks is taken from a fallback font (--symbol-font), scaled to the
 height of the capitals. Only the rendered shapes go into the PNG; no font file is
-copied anywhere. The PNG must match BANNER_PCT in tetris_nametag.py (25% of the
+copied anywhere. The PNG must match BANNER_PCT in tetris_tag.py (25% of the
 960 x 672 screen is 168 px, the default here).
 """
 
