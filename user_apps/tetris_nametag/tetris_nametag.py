@@ -22,7 +22,7 @@ from lib.button import UserA, UserB
 from lib.epd import display, display_width, display_height
 from lib.led_bar import leds
 
-NAMES = ("Nik Pashenkov", "Faberrgen")
+NAMES = ("NIK PASHENKOV", "Faberrgen")
 """Shown in turn, forever. Letters, space, and the characters in FONT below."""
 
 TARGET_FRAMES = 8
@@ -82,9 +82,17 @@ GLYPH_ROWS = 7
 
 FONT = {
     " ": ("...",) * GLYPH_ROWS,
-    "N": ("X...X", "XX..X", "XX..X", "X.X.X", "X..XX", "X..XX", "X...X"),
+    "A": (".XXX.", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
+    "E": ("XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "XXXXX"),
     "F": ("XXXXX", "X....", "XXXX.", "X....", "X....", "X....", "X...."),
+    "H": ("X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
+    "I": ("XXX", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
+    "K": ("X...X", "X..X.", "X.X..", "XX...", "X.X..", "X..X.", "X...X"),
+    "N": ("X...X", "XX..X", "XX..X", "X.X.X", "X..XX", "X..XX", "X...X"),
+    "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
+    "S": (".XXXX", "X....", "X....", ".XXX.", "....X", "....X", "XXXX."),
+    "V": ("X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
     "a": (".....", ".....", ".XXX.", "....X", ".XXXX", "X...X", ".XXXX"),
     "b": ("X....", "X....", "XXXX.", "X...X", "X...X", "X...X", "XXXX."),
     "e": (".....", ".....", ".XXX.", "X...X", "XXXXX", "X....", ".XXXX"),
