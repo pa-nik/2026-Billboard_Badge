@@ -42,8 +42,10 @@ if display.supports_fast:
 Pixels given fewer than 3 pulls are topped up by the next fast frame, so
 quick frames followed by a 3-pull frame leave a clean picture. The panel session
 stays open between frames and is closed after 2 s idle, or before any ordinary
-update. Red is drawn as ink, and the first fast frame after a red or gray frame
-(or at boot, when the panel content is unknown) is one ordinary slow refresh.
+update. Fast frames cannot make red, but they hold red that is already on the
+panel: red pixels from the last full refresh are never driven, so a red banner
+survives. A frame whose red plane differs from the last full refresh is shown with a
+full refresh instead, as is the first fast frame at boot or after a gray frame.
 The details are in `lib/epd_fast.py`. This has been checked against a software model
 of the panel, not yet on hardware.
 

@@ -318,11 +318,13 @@ class EPaperDisplay:
         Match the mode used by refresh_lvgl()/draw_png().
 
         fast=True redraws only what changed since the last frame, in black and
-        white (red is drawn as ink), in about 1.1 s per pull instead of ~34 s.
+        white, in about 1.1 s per pull instead of ~34 s. It cannot make red: red
+        already on the panel is held untouched, and a frame whose red differs from
+        the last full refresh is shown with a full refresh instead.
         pulls is how many ~1.1 s drive steps to give it: 1 is quick but pale, 3
         is solid black. Pixels given fewer than 3 are topped up by the next
-        frame. See lib/epd_fast.py. The first fast frame after a red frame, or at
-        boot, is one ordinary slow refresh.
+        frame. See lib/epd_fast.py. The first fast frame at boot, or after a gray
+        frame, is one ordinary slow refresh.
         """
         self._check_modes(grayscale, mixed, fast)
         if not 1 <= pulls <= 6:

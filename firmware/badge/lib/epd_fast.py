@@ -2,7 +2,7 @@
 
 display.update(fast=True, pulls=n) drives only the pixels that changed since the
 last frame, with the short 400-byte waveform (data/rendered_luts.py, lutb_base)
-instead of the panel's own ~34 s one. Black and white only: red is drawn as ink.
+instead of the panel's own ~34 s one. Black and white only: it cannot make red.
 
 How it works, from the iTC97 driver reference:
 * Each pixel's pair of plane bits (red, bw) picks a waveform table: 00 paper,
@@ -14,8 +14,12 @@ How it works, from the iTC97 driver reference:
   black). Pixels driven with fewer than FULL_PULLS stay "dirty" and are driven
   again next frame, so the dose adds up and nothing is left grey.
 * A session that has been idle for IDLE_MS is shut down by the display task.
-* The first fast frame after a red or gray frame, or at boot when the panel
-  content is unknown, is shown with one ordinary slow refresh first.
+* Red that is already on the panel (drawn by the last full refresh) is held, like
+  every other unchanged pixel: those pixels are sent as 11 and never driven, so a
+  red banner survives the fast frames. A fast frame whose red plane differs from
+  the last full refresh cannot be drawn, so it becomes one full refresh instead.
+* The first fast frame after a gray frame, or at boot when the panel content is
+  unknown, is also shown with one full refresh first.
 
 BUSY handling: the ordinary driver proceeds when either COG's BUSY is high (see
 the "Don't wait on busy signal from both halfs" commit), so a pin that never comes
@@ -50,22 +54,25 @@ def _fill(dst: ptr8, count: int, value: int):
 
 
 @micropython.viper
-def _ink(black: ptr8, red: ptr8, out: ptr8, count: int):
-    # Red cannot be driven by the short waveform, so it is drawn as ink.
+def _same(a: ptr8, b: ptr8, count: int) -> int:
     for i in range(count):
-        out[i] = black[i] | red[i]
+        if a[i] != b[i]:
+            return 0
+    return 1
 
 
 @micropython.viper
-def _planes(now: ptr8, prev: ptr8, dirty: ptr8, bw: ptr8, red: ptr8, keep_dirty: int):
+def _planes(black: ptr8, red: ptr8, prev: ptr8, dirty: ptr8, bw_out: ptr8, red_out: ptr8, keep_dirty: int):
     """Turn the wanted image into the two planes to send, and remember it.
-    Changed or dirty pixels get their target: 00 paper, 01 ink. Others are 11, hold."""
+    Changed or dirty pixels get their target: 00 paper, 01 ink. Everything else is
+    11, hold, including every red pixel (red is never driven, only held)."""
     for i in range(80640):
-        want = now[i]
-        drive = (want ^ prev[i]) | dirty[i]
+        r = red[i]
+        want = black[i] & (r ^ 255)
+        drive = ((want ^ prev[i]) | dirty[i]) & (r ^ 255)
         hold = drive ^ 255
-        bw[i] = hold | want
-        red[i] = hold
+        bw_out[i] = hold | want
+        red_out[i] = hold
         prev[i] = want
         if keep_dirty:
             dirty[i] = drive
@@ -77,9 +84,11 @@ class _State:
     def __init__(self):
         # What the panel shows, as ink (1) over paper (0), in framebuffer order.
         self.prev = bytearray(FRAME_BYTES)
+        # The red plane of the last full refresh: red on the panel, held by fast frames.
+        self.red_prev = bytearray(FRAME_BYTES)
         # Pixels that have had a partial dose and are not settled yet.
         self.dirty = bytearray(FRAME_BYTES)
-        # prev matches the panel and the panel holds only black and white.
+        # prev and red_prev match what the panel shows.
         self.valid = False
         self.open = False
         self.last_ms = 0
@@ -90,7 +99,6 @@ class _State:
         self.failures = 0
         self.traced = 0
         # Scratch, allocated on first fast frame.
-        self.now = None
         self.bw = None
         self.red = None
         self.halves = None
@@ -104,8 +112,7 @@ def state(display):
 
 
 def _scratch(st):
-    if st.now is None:
-        st.now = bytearray(FRAME_BYTES)
+    if st.bw is None:
         st.bw = bytearray(FRAME_BYTES)
         st.red = bytearray(FRAME_BYTES)
         st.halves = tuple(bytearray(HALF_BYTES) for _ in range(4))
@@ -123,6 +130,7 @@ async def leave(display, inexact):
     st.valid = not inexact
     if st.valid:
         _copy(st.prev, display._framebuffer_black, FRAME_BYTES)
+        _copy(st.red_prev, display._framebuffer_red, FRAME_BYTES)
     _fill(st.dirty, FRAME_BYTES, 0)
     if st.open:
         await close(display)
@@ -232,17 +240,17 @@ async def idle_check(display):
 
 
 async def _promote(display, st):
-    """One ordinary refresh, so the panel is black and white with known content."""
-    print("EPD fast: promoting first frame to a full refresh")
+    """One ordinary full refresh of the frame, red included, so the panel shows it
+    and its content is known."""
+    print("EPD fast: showing this frame with a full refresh")
     if st.open:
         await close(display)
     _scratch(st)
-    _ink(display._framebuffer_black, display._framebuffer_red, st.now, FRAME_BYTES)
     bw_left, red_left, bw_right, red_right = st.halves
-    _split(st.now, bw_left, bw_right)
-    _fill(red_left, HALF_BYTES, 0)
-    _fill(red_right, HALF_BYTES, 0)
-    _copy(st.prev, st.now, FRAME_BYTES)
+    _split(display._framebuffer_black, bw_left, bw_right)
+    _split(display._framebuffer_red, red_left, red_right)
+    _copy(st.prev, display._framebuffer_black, FRAME_BYTES)
+    _copy(st.red_prev, display._framebuffer_red, FRAME_BYTES)
     _fill(st.dirty, FRAME_BYTES, 0)
     old = display._reverse_fb_bits
     display._reverse_fb_bits = False
@@ -250,7 +258,7 @@ async def _promote(display, st):
         await display.global_update(bw_left, red_left, bw_right, red_right)
     finally:
         display._reverse_fb_bits = old
-    st.valid = display._panel_monochrome
+    st.valid = True
 
 
 async def _open(display, st, halves):
@@ -282,12 +290,12 @@ async def fast_update(display, pulls):
     st = state(display)
     trace = None
     try:
-        if not (display._panel_monochrome and st.valid):
+        if not st.valid or not _same(display._framebuffer_red, st.red_prev, FRAME_BYTES):
             await _promote(display, st)
             return
         _scratch(st)
-        _ink(display._framebuffer_black, display._framebuffer_red, st.now, FRAME_BYTES)
-        _planes(st.now, st.prev, st.dirty, st.bw, st.red, 1 if pulls < FULL_PULLS else 0)
+        _planes(display._framebuffer_black, display._framebuffer_red, st.prev, st.dirty,
+                st.bw, st.red, 1 if pulls < FULL_PULLS else 0)
         bw_left, red_left, bw_right, red_right = st.halves
         _split(st.bw, bw_left, bw_right)
         _split(st.red, red_left, red_right)
