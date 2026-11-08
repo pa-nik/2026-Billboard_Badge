@@ -19,8 +19,8 @@ Edit the top of `tetris_nametag.py`:
   own name, or list several to cycle through them. Only characters in `FONT` can be
   shown: capitals A E F H I K M N O P R S U V Y, some lowercase, and space. Add a glyph to
   `FONT` for any other letter (5 wide, 7 tall, `X` is a block).
-* `PIECES_AT_ONCE`, `FALL_FRAMES`, `FALL_ROWS`: how many pieces fall together,
-  how many refreshes each fall takes, and how high they start.
+* `PIECES_AT_ONCE`, `SPAWN_PCT`, `ROTATE_DROP_ROWS`: the most pieces that fall together in a
+  wave, the screen height they all start from, and how far they drop with each turn.
 * `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
 * `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below.
 * `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
@@ -60,21 +60,32 @@ uses the fast partial refresh in `firmware/badge/lib/epd_fast.py`
 
 1. Each name starts with one full refresh to a blank field. That is the "clear
    screen" step, and it also wipes any ghosting.
-2. Pieces then fall in batches of `PIECES_AT_ONCE`. Each batch is `FALL_FRAMES`
-   partial refreshes: it appears up in the air, steps down, and lands.
-3. Moving frames use `HOP_PULLS` pulls (1 by default, so a falling piece is pale),
-   and the landing frame uses `SETTLE_PULLS` (3, solid black). Anything left pale
-   is topped up by the next frame, so there are no grey trails.
+2. The pieces then fall in waves of up to `PIECES_AT_ONCE`. Every piece in a wave appears
+   at the same height, `SPAWN_PCT` (25%) down from the top of the screen, which is the
+   bottom edge of the banner, turned a random quarter turn (90, 180 or 270 degrees).
+   Each refresh after that turns every piece another 90 degrees, dropping it a few rows
+   (`ROTATE_DROP_ROWS`), until it is the right way up. The refresh after that drops it
+   straight into place. A square, which looks the same turned, needs no turning.
+3. A wave is 2 to 4 refreshes. Frames in which pieces are moving use `HOP_PULLS` pulls (1
+   by default, so they are pale), and the last frame of the wave uses `SETTLE_PULLS` (3, solid
+   black). Anything left pale is topped up by the next frame, so there are no grey trails.
 
-With the defaults a name takes roughly 3 to 5 minutes, mostly because each piece
-lands in about 7 s. Raise `PIECES_AT_ONCE` to go faster; raise `HOP_PULLS` if falling
-pieces are too faint to see. The app prints `refresh ms:` over serial after every
-frame, so you can see the real times on your badge.
+A piece joins a wave only if it can never land on another piece of that wave in the
+air, in any frame, and only once the pieces it rests on have landed. So a wave holds
+fewer pieces than `PIECES_AT_ONCE` when letters are crowded.
+
+With the defaults, falling takes about 45 s per pass for a name like "YOUR NAME" (about 6 waves, about
+20 refreshes), about four times faster than falling a couple of pieces at a time, which
+took about 3 minutes. Each pass also starts with the full-screen refresh, about 37 s, which
+cannot be made faster. Raise `PIECES_AT_ONCE` to go faster still (past about 10 it stops
+helping, since pieces wait for the ones below them); raise `HOP_PULLS` if falling pieces
+are too faint to see. The app prints `refresh ms:` over serial after every frame, so you can
+see the real times on your badge.
 
 The pieces are black while falling (the fast waveform cannot make red). If
 the badge is not a B1 panel, or the firmware does not have `epd_fast.py`, the app
 falls back to a slideshow of full refreshes, one per snapshot, with the pieces in the
-air in red.
+air in red. The slideshow does not turn the pieces.
 
 ## Blinking
 

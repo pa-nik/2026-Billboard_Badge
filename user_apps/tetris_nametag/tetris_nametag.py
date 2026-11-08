@@ -10,11 +10,13 @@ The lettering is an image made on a computer by make_banner.py. Edit NAMES and t
 settings below to make it your own.
 
 The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels
-with current firmware (display.supports_fast) the pieces fall in a handful of
-partial refreshes each, about 1 s apiece (see lib/epd_fast.py): the screen is
-cleared with one full refresh, then only the pixels that change are redrawn.
-Elsewhere it falls back to a slideshow, one full refresh per snapshot, showing
-the pieces landed (black) and the next few still in the air (red).
+with current firmware (display.supports_fast) the pieces fall in waves of a few
+partial refreshes (see lib/epd_fast.py): the screen is cleared with one full refresh,
+then only the pixels that change are redrawn. Every piece of a wave appears at 25% of
+the screen height turned a random quarter turn, turns 90 degrees per refresh until it
+is the right way up, then drops into place. Elsewhere it falls back to a slideshow, one
+full refresh per snapshot, showing the pieces landed (black) and the next few still in
+the air (red).
 """
 
 import random
@@ -67,15 +69,18 @@ FAST = True
 """Use partial refreshes where the panel and firmware support them. False forces
 the slideshow."""
 
-PIECES_AT_ONCE = 2
-"""Pieces falling together, in different columns. Each batch costs
-FALL_FRAMES refreshes, so more at once is faster overall."""
+PIECES_AT_ONCE = 9
+"""Most pieces that fall together in one wave. A wave is a few partial refreshes (see
+below), so more at once is faster overall. A piece only joins a wave if it cannot land
+on another piece in the air, so waves are often smaller than this."""
 
-FALL_FRAMES = 4
-"""Refreshes per batch: it appears, moves down, and lands. At least 2."""
+SPAWN_PCT = 25
+"""Every piece appears at this percent of the screen height, measured from the top.
+25 is the bottom edge of the banner. It is never put inside the banner."""
 
-FALL_ROWS = 9
-"""How many rows above its landing spot a piece first appears."""
+ROTATE_DROP_ROWS = 3
+"""Rows a piece drops during each 90 degree turn on its way down. Once it is turned
+the right way up it falls the rest of the way into place in one refresh."""
 
 HOP_PULLS = 1
 """Drive steps (about 1.1 s each) for frames while a piece is moving. 1 is
@@ -227,6 +232,23 @@ def _split_glyph(cells):
     return best
 
 
+def _turn(shape):
+    """A list of (x, y) cells turned a quarter turn clockwise, moved back to the origin."""
+    turned = [(-y, x) for x, y in shape]
+    left = min(x for x, _ in turned)
+    top = min(y for _, y in turned)
+    return sorted((x - left, y - top) for x, y in turned)
+
+
+def _clash(a, b):
+    """Do two falls ever put a block on the same cell in the same frame? A fall
+    that has landed stays where it is for the rest of the wave."""
+    for frame in range(max(len(a), len(b))):
+        if set(a[min(frame, len(a) - 1)]) & set(b[min(frame, len(b) - 1)]):
+            return True
+    return False
+
+
 class _Banner:
     """A red band across the top, with the lettering image drawn over it."""
 
@@ -257,6 +279,11 @@ class _Plan:
         self.y_grid = self.field_rows - GLYPH_ROWS
         # First grid row below the banner; pieces in the air stay under it.
         self.top_row = (display_height * BANNER_PCT // 100 + self.cell - 1) // self.cell
+        # Row where every piece appears, and how far sideways a turned piece may reach.
+        self.spawn_row = max(self.top_row,
+                             (display_height * SPAWN_PCT // 100 + self.cell - 1) // self.cell)
+        self.min_x = -(self.x0 // self.cell)
+        self.max_x = (display_width - self.x0) // self.cell
         self.pieces = []
         self.before = []
         for cells in glyphs:
@@ -279,27 +306,63 @@ class _Plan:
             order.append(pick)
         return order
 
-    def land_batches(self, at_once):
-        """Pieces grouped to fall together: in different columns, so they cannot
-        touch in the air, and none waiting on another in its group."""
+    def make_fall(self, i):
+        """Where piece i is drawn in each frame of its fall, as a list of cell lists.
+
+        It appears at the spawn height turned a random quarter turn, then turns 90
+        degrees per frame (the shorter way round, dropping ROTATE_DROP_ROWS each time)
+        until its shape matches its final orientation. The last entry is where it
+        lands, so the frame after it is turned the right way up it drops into place. A
+        piece that looks the same turned, like a square, needs fewer turns or none."""
+        cells = self.pieces[i]
+        left = min(x for x, _ in cells)
+        top = min(y for _, y in cells)
+        final = sorted((x - left, y - top) for x, y in cells)
+        width = max(x for x, _ in final) + 1
+        shapes = [final]  # shapes[n]: the final shape turned n quarter turns clockwise
+        for _ in range(3):
+            shapes.append(_turn(shapes[-1]))
+        turns = random.randint(1, 3)
+        step = 1 if turns == 3 else (-1 if turns == 1 else random.choice((1, -1)))
+        path = [turns]
+        while shapes[path[-1]] != final:
+            path.append((path[-1] + step) % 4)
+        frames = []
+        for n, turned in enumerate(path):
+            shape = shapes[turned]
+            w = max(x for x, _ in shape) + 1
+            x = max(self.min_x, min(left + (width - w) // 2, self.max_x - w))
+            y = min(self.spawn_row + ROTATE_DROP_ROWS * n, top)
+            frames.append([(x + sx, y + sy) for sx, sy in shape])
+        frames.append(list(cells))
+        return frames
+
+    def land_waves(self, at_most):
+        """The pieces grouped into waves that fall together, each a list of
+        (piece, frames). A wave only takes pieces whose supports have already landed,
+        so none waits on another, and a piece joins only if it never lands on one
+        already in the wave, in any frame."""
         done = set()
-        batches = []
+        waves = []
         while len(done) < len(self.pieces):
             ready = [i for i in range(len(self.pieces))
                      if i not in done and self.before[i] <= done]
-            batch = []
-            cols = set()
-            while ready and len(batch) < at_once:
+            wave = []
+            while ready and len(wave) < at_most:
                 pick = random.choice(ready)
                 ready.remove(pick)
-                pick_cols = set(x for x, _ in self.pieces[pick])
-                if cols & pick_cols:
+                frames = self.make_fall(pick)
+                if any(_clash(frames, other) for _, other in wave):
                     continue
-                batch.append(pick)
-                cols |= pick_cols
-            done.update(batch)
-            batches.append(batch)
-        return batches
+                wave.append((pick, frames))
+            done.update(i for i, _ in wave)
+            waves.append(wave)
+        return waves
+
+    def draw_cells(self, plane, cells):
+        size = self.cell - self.gap
+        for x, y in cells:
+            plane.fill_rect(self.x0 + x * self.cell, y * self.cell, size, size, 1)
 
     def draw_piece(self, plane, cells, rows_up=0):
         size = self.cell - self.gap
@@ -342,10 +405,9 @@ class TetrisNametagApp(BaseApp):
         self.batch_size = 1
         self.frame = 0
         self.frames = 0
-        self.batches = []
+        self.waves = []
         self.batch = 0
         self.landed = []
-        self.spawn = {}
         self.blink_step = 0
         self.blink_ms = 0
         self.frame_ms = 0
@@ -362,14 +424,15 @@ class TetrisNametagApp(BaseApp):
         self.fast = FAST and getattr(display, "supports_fast", False)
         self.frame_ms = 0
         if self.fast:
-            self.batches = plan.land_batches(max(1, PIECES_AT_ONCE))
-            self.order = [i for batch in self.batches for i in batch]
+            self.waves = plan.land_waves(max(1, PIECES_AT_ONCE))
+            self.order = [i for wave in self.waves for i, _ in wave]
             self.batch = 0
             self.frame = 0
             self.landed = []
             self.state = _CLEAR
-            print(f"{NAMES[self.word]}: {len(self.order)} pieces, "
-                  f"{len(self.batches) * FALL_FRAMES} partial refreshes, cell {plan.cell}px")
+            refreshes = sum(max(len(frames) for _, frames in wave) for wave in self.waves)
+            print(f"{NAMES[self.word]}: {len(self.order)} pieces in {len(self.waves)} waves, "
+                  f"{refreshes} partial refreshes, cell {plan.cell}px")
             return
         self.order = plan.land_sequence()
         count = len(self.order)
@@ -412,34 +475,26 @@ class TetrisNametagApp(BaseApp):
 
     def _show_fast(self, moving, pulls):
         """Partial refresh: landed pieces plus the moving ones, all black.
-        moving is a list of (piece, rows above its landing spot)."""
+        moving is a list of cell lists, one per piece in the air."""
         plan = self.plan
         self._new_frame()
         for i in self.landed:
             plan.draw_piece(display.black, plan.pieces[i])
-        for i, rows_up in moving:
-            plan.draw_piece(display.black, plan.pieces[i], rows_up)
+        for cells in moving:
+            plan.draw_cells(display.black, cells)
         display.update(fast=True, pulls=pulls)
         self.frame_ms = time.ticks_ms()
 
     def _drop_frame(self):
-        """One partial refresh of the current batch falling: it appears up in the
-        air, steps down FALL_FRAMES - 2 times, and lands on the last frame."""
-        plan = self.plan
-        batch = self.batches[self.batch]
-        last = max(2, FALL_FRAMES) - 1
-        if self.frame == 0:
-            self.spawn = {}
-            for i in batch:
-                room = min(y for _, y in plan.pieces[i]) - plan.top_row
-                self.spawn[i] = random.randint(min(FALL_ROWS // 2 + 1, room), min(FALL_ROWS, room))
-        moving = []
-        for i in batch:
-            step = (self.spawn[i] + last - 1) // last
-            moving.append((i, max(0, self.spawn[i] - step * self.frame)))
+        """One partial refresh of the current wave falling: the pieces appear at the
+        spawn height turned a random way, turn 90 degrees a frame until they are the
+        right way up, then drop into place. The last frame is the solid one."""
+        wave = self.waves[self.batch]
+        last = max(len(frames) for _, frames in wave) - 1
+        moving = [frames[min(self.frame, len(frames) - 1)] for _, frames in wave]
         self._show_fast(moving, SETTLE_PULLS if self.frame == last else HOP_PULLS)
         if self.frame == last:
-            self.landed.extend(batch)
+            self.landed.extend(i for i, _ in wave)
             self.batch += 1
             self.frame = 0
         else:
@@ -512,7 +567,7 @@ class TetrisNametagApp(BaseApp):
                 # The driver gave up on fast refresh after repeated failures.
                 print("Fast refresh stopped working, using the slideshow")
                 self._start_word(self.word)
-            elif self.batch < len(self.batches):
+            elif self.batch < len(self.waves):
                 self._drop_frame()
             else:
                 self._start_blink()
