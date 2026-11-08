@@ -10,13 +10,14 @@ The lettering is an image made on a computer by make_banner.py. Edit NAMES and t
 settings below to make it your own.
 
 The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels
-with current firmware (display.supports_fast) the pieces fall in waves of a few
-partial refreshes (see lib/epd_fast.py): the screen is cleared with one full refresh,
-then only the pixels that change are redrawn. Every piece of a wave appears at 25% of
-the screen height turned a random quarter turn, turns 90 degrees per refresh until it
-is the right way up, then drops into place. Elsewhere it falls back to a slideshow, one
-full refresh per snapshot, showing the pieces landed (black) and the next few still in
-the air (red).
+with current firmware (display.supports_fast) the pieces fall one at a time, like the
+real game, in a few partial refreshes each (see lib/epd_fast.py): the screen is cleared
+with one full refresh, then only the pixels that change are redrawn. A piece appears at
+25% of the screen height turned a random quarter turn, turns 90 degrees per
+refresh until it is the right way up, then drops into place. (An LED bar fill that
+follows the fall is built in but switched off, see FILL_ENABLED.) Elsewhere it falls
+back to a slideshow, one full refresh per snapshot, showing the pieces landed (black)
+and the next few still in the air (red).
 """
 
 import random
@@ -25,7 +26,7 @@ import time
 from apps.base_app import BaseApp
 from lib.button import UserA, UserB
 from lib.epd import display, display_width, display_height
-from lib.led_bar import leds
+from lib.led_bar import NUM_LEDS, leds
 
 NAMES = ("YOUR NAME",)
 """Shown in turn, forever. Replace "YOUR NAME" with your own, using only the characters
@@ -69,10 +70,24 @@ FAST = True
 """Use partial refreshes where the panel and firmware support them. False forces
 the slideshow."""
 
-PIECES_AT_ONCE = 9
-"""Most pieces that fall together in one wave. A wave is a few partial refreshes (see
-below), so more at once is faster overall. A piece only joins a wave if it cannot land
-on another piece in the air, so waves are often smaller than this."""
+PIECES_AT_ONCE = 1
+"""Pieces falling at the same time. 1 is like the real game: one piece falls, turns
+and lands, then the next. Higher is much faster, because a refresh then moves several
+pieces at once (9 is about seven times faster), but pieces fall in crowds. A piece only
+joins a wave if it cannot land on another piece in the air."""
+
+FILL_ENABLED = False
+"""The LED bar filling while a piece falls. Off on this branch for now; the finished-name
+blink (BLINK_MODE) is separate and still runs."""
+
+FILL_COLOR = (20, 20, 20)
+"""Colour the LEDs fill with while a piece falls. They are bright, so keep it low."""
+
+FILL_HOLD_MS = 400
+"""How long every LED stays lit after a piece lands, before they empty for the next."""
+
+FILL_REVERSE = False
+"""Fill from the other end, if the LED bar fills right to left on your badge."""
 
 SPAWN_PCT = 25
 """Every piece appears at this percent of the screen height, measured from the top.
@@ -110,7 +125,7 @@ FONT = {
     "I": ("XXX", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
     "K": ("X...X", "X..X.", "X.X..", "XX...", "X.X..", "X..X.", "X...X"),
     "M": ("X...X", "XX.XX", "X.X.X", "X.X.X", "X...X", "X...X", "X...X"),
-    "N": ("X...X", "XX..X", "XX..X", "X.X.X", "X..XX", "X..XX", "X...X"),
+    "N": ("X.....X", "XX....X", "XX....X", "X..X..X", "X....XX", "X....XX", "X.....X"),
     "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
     "R": ("XXXX.", "X...X", "X...X", "XXXX.", "X.X..", "X..X.", "X...X"),
@@ -134,6 +149,12 @@ FONT = {
     "s": (".....", ".....", ".XXXX", "X....", ".XXX.", "....X", "XXXX."),
     "v": (".....", ".....", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
 }
+
+# Rough time of one partial refresh, used only to pace the LED fill: about 1.17 s a
+# drive step plus the data transfer. Measured on a badge; the real times print as
+# "refresh ms:".
+_PULL_MS = 1170
+_FRAME_MS = 220
 
 _BUILD = 0
 _BLINK = 1
@@ -188,6 +209,50 @@ def _greedy_split(cells):
             piece.append(nxt)
             free.discard(nxt)
         pieces.append(piece)
+    return _absorb_singles(pieces)
+
+
+def _connected(cells):
+    """True if the cells touch edge to edge as one group."""
+    rest = set(cells)
+    stack = [rest.pop()]
+    while stack:
+        for nb in _neighbors(stack.pop()):
+            if nb in rest:
+                rest.discard(nb)
+                stack.append(nb)
+    return not rest
+
+
+def _absorb_singles(pieces):
+    """Fold lone cells into a neighbouring piece: join one that has room, or take a cell
+    off a bigger one that stays whole without it. A cell touching no other cell by an edge
+    (a diagonal stroke) stays alone, since no piece can hold it."""
+    changed = True
+    while changed:
+        changed = False
+        for single in [p for p in pieces if len(p) == 1]:
+            cell = single[0]
+            for nb in _neighbors(cell):
+                other = None
+                for q in pieces:
+                    if nb in q and q is not single:
+                        other = q
+                        break
+                if other is None:
+                    continue
+                if len(other) < 4:
+                    other.append(cell)
+                    pieces.remove(single)
+                elif len(other) > 2 and _connected([c for c in other if c != nb]):
+                    other.remove(nb)
+                    single.append(nb)
+                else:
+                    continue
+                changed = True
+                break
+            if changed:
+                break
     return pieces
 
 
@@ -218,13 +283,17 @@ def _land_order(pieces):
 
 def _split_glyph(cells):
     best = None
+    best_score = None
     for _ in range(SPLIT_ATTEMPTS):
         pieces = _greedy_split(cells)
-        if best is not None and len(pieces) >= len(best[0]):
+        # Fewest single blocks first, then fewest pieces.
+        score = (sum(1 for p in pieces if len(p) == 1), len(pieces))
+        if best is not None and score >= best_score:
             continue
         before = _land_order(pieces)
         if before is not None:
             best = (pieces, before)
+            best_score = score
     if best is None:
         # Single blocks can always be stacked bottom-up.
         pieces = [[c] for c in cells]
@@ -247,6 +316,11 @@ def _clash(a, b):
         if set(a[min(frame, len(a) - 1)]) & set(b[min(frame, len(b) - 1)]):
             return True
     return False
+
+
+def _fall_pulls(frame, landing):
+    """Drive steps for frame `frame` of a fall whose landing frame is `landing`."""
+    return SETTLE_PULLS if frame == landing else HOP_PULLS
 
 
 class _Banner:
@@ -411,6 +485,10 @@ class TetrisTagApp(BaseApp):
         self.blink_step = 0
         self.blink_ms = 0
         self.frame_ms = 0
+        self.led_n = -1  # LEDs lit now; -1 means unknown, so the next write goes out
+        self.led_ramp = None  # (start ms, duration ms, from, to) of the fill in progress
+        self.led_last = False  # the frame in progress is the one that lands the piece
+        self.led_hold = None  # ticks_ms until which the full bar stays lit, if any
 
     def _start_word(self, idx):
         self.word = idx % len(NAMES)
@@ -421,6 +499,7 @@ class TetrisTagApp(BaseApp):
         if self.banner is None:
             self.banner = _Banner()
         self.screen_ready = False  # the next frame starts from a full clear and banner
+        self.led_n, self.led_ramp, self.led_last = -1, None, False
         self.fast = FAST and getattr(display, "supports_fast", False)
         self.frame_ms = 0
         if self.fast:
@@ -430,7 +509,8 @@ class TetrisTagApp(BaseApp):
             self.frame = 0
             self.landed = []
             self.state = _CLEAR
-            refreshes = sum(max(len(frames) for _, frames in wave) for wave in self.waves)
+            refreshes = sum(max(len(frames) for _, frames in wave)
+                            for wave in self.waves)
             print(f"{NAMES[self.word]}: {len(self.order)} pieces in {len(self.waves)} waves, "
                   f"{refreshes} partial refreshes, cell {plan.cell}px")
             return
@@ -474,8 +554,8 @@ class TetrisTagApp(BaseApp):
         self.frame += 1
 
     def _show_fast(self, moving, pulls):
-        """Partial refresh: landed pieces plus the moving ones, all black.
-        moving is a list of cell lists, one per piece in the air."""
+        """Partial refresh: landed pieces and the ones in the air, all in
+        black. moving is a list of cell lists, one per piece in the air."""
         plan = self.plan
         self._new_frame()
         for i in self.landed:
@@ -485,15 +565,56 @@ class TetrisTagApp(BaseApp):
         display.update(fast=True, pulls=pulls)
         self.frame_ms = time.ticks_ms()
 
+    def _set_leds(self, n):
+        """Light the first n LEDs (the last n with FILL_REVERSE), the rest off."""
+        n = max(0, min(NUM_LEDS, n))
+        if n == self.led_n:
+            return
+        self.led_n = n
+        for i in range(NUM_LEDS):
+            on = i >= NUM_LEDS - n if FILL_REVERSE else i < n
+            leds[i] = FILL_COLOR if on else (0, 0, 0)
+        leds.write()
+
+    def _start_fill(self, frame, last):
+        """As frame `frame` of a fall (the landing frame is `last`) is queued, start the
+        LEDs filling, paced to the time the whole fall takes so the bar is full just as
+        the piece lands. The bar from the last piece stays lit for FILL_HOLD_MS first."""
+        if not FILL_ENABLED:
+            return
+        spans = [_fall_pulls(k, last) * _PULL_MS + _FRAME_MS for k in range(last + 1)]
+        total = sum(spans)
+        now = time.ticks_ms()
+        start = now
+        if frame == 0 and self.led_hold is not None and time.ticks_diff(self.led_hold, now) > 0:
+            start = self.led_hold
+        length = spans[frame] - time.ticks_diff(start, now)
+        self.led_ramp = (start, max(1, length),
+                         NUM_LEDS * sum(spans[:frame]) / total,
+                         NUM_LEDS * sum(spans[:frame + 1]) / total)
+        self.led_last = frame == last
+
+    def _tick_leds(self):
+        """Move the fill along. Never shows a full bar before the piece has landed."""
+        if self.led_ramp is None:
+            return
+        start, length, a, b = self.led_ramp
+        elapsed = time.ticks_diff(time.ticks_ms(), start)
+        if elapsed < 0:
+            return  # still holding the full bar from the last piece
+        level = a + (b - a) * min(1.0, elapsed / length)
+        self._set_leds(min(int(level), NUM_LEDS - 1))
+
     def _drop_frame(self):
-        """One partial refresh of the current wave falling: the pieces appear at the
-        spawn height turned a random way, turn 90 degrees a frame until they are the
-        right way up, then drop into place. The last frame is the solid one."""
+        """One partial refresh of the current wave: the pieces appear at the spawn
+        height turned a random way, turn 90 degrees a frame until they are the right
+        way up, then drop into place."""
         wave = self.waves[self.batch]
-        last = max(len(frames) for _, frames in wave) - 1
+        landing = max(len(frames) for _, frames in wave) - 1  # last refresh of the fall
         moving = [frames[min(self.frame, len(frames) - 1)] for _, frames in wave]
-        self._show_fast(moving, SETTLE_PULLS if self.frame == last else HOP_PULLS)
-        if self.frame == last:
+        self._show_fast(moving, _fall_pulls(self.frame, landing))
+        self._start_fill(self.frame, landing)
+        if self.frame == landing:
             self.landed.extend(i for i, _ in wave)
             self.batch += 1
             self.frame = 0
@@ -504,6 +625,7 @@ class TetrisTagApp(BaseApp):
         self.state = _BLINK
         self.blink_step = 0
         self.blink_ms = time.ticks_ms()
+        self.led_n, self.led_ramp, self.led_last = -1, None, False
         if BLINK_MODE == "leds":
             leds.fill(BLINK_COLOR)
 
@@ -546,9 +668,20 @@ class TetrisTagApp(BaseApp):
             leds.fill((0, 0, 0))
             self._start_word(self.word)
 
-        # A refresh in progress owns the LEDs and the framebuffers.
+        # Fast refreshes leave the LEDs alone, so the fill can carry on while one runs.
+        if self.state == _DROP:
+            self._tick_leds()
+
+        # A refresh in progress owns the framebuffers.
         if not display.is_done_updating():
             return
+
+        if self.led_last and FILL_ENABLED:
+            # The piece has landed: every LED lit, held briefly before the next piece.
+            self.led_last = False
+            self.led_ramp = None
+            self._set_leds(NUM_LEDS)
+            self.led_hold = time.ticks_add(time.ticks_ms(), FILL_HOLD_MS)
 
         if self.frame_ms:
             print("refresh ms:", time.ticks_diff(time.ticks_ms(), self.frame_ms))
