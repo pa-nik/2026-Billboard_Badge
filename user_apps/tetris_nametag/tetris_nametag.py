@@ -4,7 +4,8 @@ bottom edge of the screen, the name blinks, then the next name is built.
 User A: skip to the next name
 User B: restart the current name
 
-Edit NAMES and the settings below to make it your own.
+A red banner with white block lettering runs across the top of the screen. Edit
+NAMES, BANNER_TEXT and the settings below to make it your own.
 
 The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels
 with current firmware (display.supports_fast) the pieces fall in a handful of
@@ -22,8 +23,21 @@ from lib.button import UserA, UserB
 from lib.epd import display, display_width, display_height
 from lib.led_bar import leds
 
-NAMES = ("NIK PASHENKOV", "Faberrgen")
+NAMES = ("NIK PASHENKOV", "Faberrgén")
 """Shown in turn, forever. Letters, space, and the characters in FONT below."""
+
+BANNER_TEXT = "\u0422\u0415\u0422\u0420\u0418\u0421 PAD"
+"""White lettering centred on the red banner: "ТЕТРИС PAD", the Cyrillic word for
+Tetris, then PAD in Latin letters. Drawn in the same block font as the names, so it
+only needs glyphs in FONT. Set to "" for no lettering."""
+
+BANNER_PCT = 25
+"""Banner height as a percent of the screen height. 0 for no banner. The banner is
+red, so it is drawn by the full refresh at the start of each name, and the fast
+partial refreshes hold it untouched."""
+
+BANNER_MAX_CELL = 20
+"""Largest block size in pixels for the banner lettering."""
 
 TARGET_FRAMES = 8
 """Roughly how many e-paper refreshes it takes to build one name.
@@ -83,6 +97,8 @@ GLYPH_ROWS = 7
 FONT = {
     " ": ("...",) * GLYPH_ROWS,
     "A": (".XXX.", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
+    "C": (".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX."),
+    "D": ("XXXX.", "X...X", "X...X", "X...X", "X...X", "X...X", "XXXX."),
     "E": ("XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "XXXXX"),
     "F": ("XXXXX", "X....", "XXXX.", "X....", "X....", "X....", "X...."),
     "H": ("X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
@@ -92,10 +108,13 @@ FONT = {
     "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
     "S": (".XXXX", "X....", "X....", ".XXX.", "....X", "....X", "XXXX."),
+    "T": ("XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "..X.."),
     "V": ("X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
     "a": (".....", ".....", ".XXX.", "....X", ".XXXX", "X...X", ".XXXX"),
     "b": ("X....", "X....", "XXXX.", "X...X", "X...X", "X...X", "XXXX."),
     "e": (".....", ".....", ".XXX.", "X...X", "XXXXX", "X....", ".XXXX"),
+    # Acute accent in the two rows above the x-height.
+    "é": ("...X.", "..X..", ".XXX.", "X...X", "XXXXX", "X....", ".XXXX"),
     # No descender, so every letter sits on the same floor.
     "g": (".....", ".....", ".XXXX", "X...X", ".XXXX", "....X", ".XXX."),
     "h": ("X....", "X....", "X.XX.", "XX..X", "X...X", "X...X", "X...X"),
@@ -106,7 +125,14 @@ FONT = {
     "r": (".....", ".....", "X.XX.", "XX..X", "X....", "X....", "X...."),
     "s": (".....", ".....", ".XXXX", "X....", ".XXX.", "....X", "XXXX."),
     "v": (".....", ".....", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
+    # Cyrillic I (looks like a reversed N). The other letters of the banner word
+    # look the same as Latin ones, so they borrow those glyphs below.
+    "\u0418": ("X...X", "X..XX", "X..XX", "X.X.X", "XX..X", "XX..X", "X...X"),
 }
+FONT["\u0422"] = FONT["T"]  # Cyrillic Te
+FONT["\u0415"] = FONT["E"]  # Cyrillic Ie
+FONT["\u0420"] = FONT["P"]  # Cyrillic Er
+FONT["\u0421"] = FONT["C"]  # Cyrillic Es
 
 _BUILD = 0
 _BLINK = 1
@@ -205,6 +231,32 @@ def _split_glyph(cells):
     return best
 
 
+class _Banner:
+    """A red band across the top, with the text in white blocks centred in it."""
+
+    def __init__(self, text):
+        glyphs, cols = _text_cells(text) if text else ([], 0)
+        self.height = display_height * BANNER_PCT // 100
+        self.cell = max(2, min(BANNER_MAX_CELL, display_width // (cols + 6),
+                               self.height // (GLYPH_ROWS + 2)))
+        self.gap = max(1, self.cell // 8)
+        text_w = cols * self.cell - self.gap
+        text_h = GLYPH_ROWS * self.cell - self.gap
+        self.x0 = (display_width - text_w) // 2
+        self.y0 = (self.height - text_h) // 2
+        self.cells = [c for glyph in glyphs for c in glyph]
+
+    def draw(self):
+        """Red band in the red plane, lettering cut out of it so it shows white."""
+        if not self.height:
+            return
+        red = display.red
+        red.fill_rect(0, 0, display_width, self.height, 1)
+        size = self.cell - self.gap
+        for x, y in self.cells:
+            red.fill_rect(self.x0 + x * self.cell, self.y0 + y * self.cell, size, size, 0)
+
+
 class _Plan:
     """A name cut into pieces, with the pixel layout to draw it."""
 
@@ -215,6 +267,8 @@ class _Plan:
         self.x0 = (display_width - cols * self.cell) // 2
         self.field_rows = (display_height - BOTTOM_MARGIN) // self.cell
         self.y_grid = self.field_rows - GLYPH_ROWS
+        # First grid row below the banner; pieces in the air stay under it.
+        self.top_row = (display_height * BANNER_PCT // 100 + self.cell - 1) // self.cell
         self.pieces = []
         self.before = []
         for cells in glyphs:
@@ -270,7 +324,7 @@ class _Plan:
         taken = set()
         heights = {}
         for i in batch:
-            top = min(y for _, y in self.pieces[i])
+            top = min(y for _, y in self.pieces[i]) - self.top_row
             start = random.randint(min(FLIGHT_MIN_ROWS, top), top)
             # Nudge up to clear other pieces in the air, or down if out of room.
             up = start
@@ -294,6 +348,7 @@ class TetrisNametagApp(BaseApp):
         self.state = _BUILD
         self.fast = False
         self.plan = None
+        self.banner = None
         self.order = []
         self.batch_size = 1
         self.frame = 0
@@ -312,6 +367,8 @@ class TetrisNametagApp(BaseApp):
         if plan is None:
             plan = self.plans[self.word] = _Plan(NAMES[self.word])
         self.plan = plan
+        if self.banner is None:
+            self.banner = _Banner(BANNER_TEXT)
         self.fast = FAST and getattr(display, "supports_fast", False)
         self.frame_ms = 0
         if self.fast:
@@ -337,6 +394,7 @@ class TetrisNametagApp(BaseApp):
         """Slideshow: queue a snapshot, landed pieces in black, in the air in red."""
         plan = self.plan
         display.clear()
+        self.banner.draw()
         for i in landed:
             plan.draw_piece(display.black, plan.pieces[i])
         heights = plan.flight_heights(in_air)
@@ -356,6 +414,7 @@ class TetrisNametagApp(BaseApp):
         moving is a list of (piece, rows above its landing spot)."""
         plan = self.plan
         display.clear()
+        self.banner.draw()
         for i in self.landed:
             plan.draw_piece(display.black, plan.pieces[i])
         for i, rows_up in moving:
@@ -372,7 +431,7 @@ class TetrisNametagApp(BaseApp):
         if self.frame == 0:
             self.spawn = {}
             for i in batch:
-                room = min(y for _, y in plan.pieces[i])
+                room = min(y for _, y in plan.pieces[i]) - plan.top_row
                 self.spawn[i] = random.randint(min(FALL_ROWS // 2 + 1, room), min(FALL_ROWS, room))
         moving = []
         for i in batch:
@@ -441,8 +500,10 @@ class TetrisNametagApp(BaseApp):
             self.frame_ms = 0
 
         if self.state == _CLEAR:
-            # The one full refresh per name: wipes the last name and any ghosts.
+            # The one full refresh per name: wipes the last name and any ghosts,
+            # and draws the red banner, which the fast frames then hold.
             display.clear()
+            self.banner.draw()
             display.update()
             self.frame_ms = time.ticks_ms()
             self.state = _DROP

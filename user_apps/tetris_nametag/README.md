@@ -22,6 +22,18 @@ Edit the top of `tetris_nametag.py`:
 * `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).
 * `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below.
 
+## Banner
+
+A red banner runs across the top 25% of the screen, with "ТЕТРИС PAD" in white block
+letters centred on it, in the same font as the names. Change `BANNER_TEXT` or
+`BANNER_PCT` (0 removes the banner). The lettering is drawn from the app's own font,
+because the built-in LVGL fonts have no Cyrillic. Pieces fall in the space below it.
+
+The panel can only make red with a full refresh, so the banner is drawn by the full
+refresh at the start of each name, and the partial refreshes then hold it untouched.
+Whether the red stays vivid through a few hundred partial refreshes has not been
+checked on a real badge.
+
 ## Fast partial refresh
 
 The panel's own refresh takes about 30 s, which is no use for animation. This app
@@ -42,7 +54,7 @@ lands in about 7 s. Raise `PIECES_AT_ONCE` to go faster; raise `HOP_PULLS` if fa
 pieces are too faint to see. The app prints `refresh ms:` over serial after every
 frame, so you can see the real times on your badge.
 
-It is black and white only while falling (the fast waveform cannot make red). If
+The pieces are black while falling (the fast waveform cannot make red). If
 the badge is not a B1 panel, or the firmware does not have `epd_fast.py`, the app
 falls back to a slideshow of full refreshes, one per snapshot, with the pieces in the
 air in red.
