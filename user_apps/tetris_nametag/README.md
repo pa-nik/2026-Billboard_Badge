@@ -1,12 +1,12 @@
 # Tetris Nametag
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
-the screen. The name blinks three times, then the next name is built, and it
-loops forever.
+the screen. The name blinks three times, then it is built again, and it loops forever.
+It ships with the placeholder "YOUR NAME"; put your own in `NAMES` (see below).
 
 Controls:
 ```
-User A: skip to the next name
+User A: skip to the next name (restarts it when `NAMES` has just one)
 User B: restart the current name
 Menu +/-: back to the app menu (as for every app)
 ```
@@ -15,8 +15,10 @@ Menu +/-: back to the app menu (as for every app)
 
 Edit the top of `tetris_nametag.py`:
 
-* `NAMES`: what to show, in order. Letters in `FONT` plus space. Add glyphs to
-  `FONT` for anything else (5 wide, 7 tall, `X` is a block).
+* `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
+  own name, or list several to cycle through them. Only characters in `FONT` can be
+  shown: capitals A E F H I K M N O P R S U V Y, some lowercase, and space. Add a glyph to
+  `FONT` for any other letter (5 wide, 7 tall, `X` is a block).
 * `PIECES_AT_ONCE`, `FALL_FRAMES`, `FALL_ROWS`: how many pieces fall together,
   how many refreshes each fall takes, and how high they start.
 * `HOP_PULLS`, `SETTLE_PULLS`: how hard each refresh drives the panel (below).

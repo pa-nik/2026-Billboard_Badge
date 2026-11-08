@@ -1,7 +1,8 @@
 """Tetris Nametag. Tetris-like pieces fall and stack up to spell a name along the
-bottom edge of the screen, the name blinks, then the next name is built.
+bottom edge of the screen, the name blinks, then it is built again (or the next
+name, if NAMES lists more than one).
 
-User A: skip to the next name
+User A: skip to the next name (restarts it when NAMES has just one)
 User B: restart the current name
 
 A red banner with white Helvetica Bold lettering runs across the top of the screen.
@@ -24,8 +25,10 @@ from lib.button import UserA, UserB
 from lib.epd import display, display_width, display_height
 from lib.led_bar import leds
 
-NAMES = ("NIK PASHENKOV", "Faberrgén")
-"""Shown in turn, forever. Letters, space, and the characters in FONT below."""
+NAMES = ("YOUR NAME",)
+"""Shown in turn, forever. Replace "YOUR NAME" with your own, using only the characters
+in FONT below (capitals A E F H I K M N O P R S U V Y, some lowercase, and space), or
+add more names to the tuple to cycle through them. Other letters need a 5 x 7 glyph."""
 
 BANNER_IMAGE = "/data/graphics/tetris_banner.png"
 """White lettering on red, 960 px wide, made on a computer by make_banner.py and
@@ -101,11 +104,15 @@ FONT = {
     "H": ("X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
     "I": ("XXX", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
     "K": ("X...X", "X..X.", "X.X..", "XX...", "X.X..", "X..X.", "X...X"),
+    "M": ("X...X", "XX.XX", "X.X.X", "X.X.X", "X...X", "X...X", "X...X"),
     "N": ("X...X", "XX..X", "XX..X", "X.X.X", "X..XX", "X..XX", "X...X"),
     "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
+    "R": ("XXXX.", "X...X", "X...X", "XXXX.", "X.X..", "X..X.", "X...X"),
     "S": (".XXXX", "X....", "X....", ".XXX.", "....X", "....X", "XXXX."),
+    "U": ("X...X", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "V": ("X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
+    "Y": ("X...X", "X...X", ".X.X.", "..X..", "..X..", "..X..", "..X.."),
     "a": (".....", ".....", ".XXX.", "....X", ".XXXX", "X...X", ".XXXX"),
     "b": ("X....", "X....", "XXXX.", "X...X", "X...X", "X...X", "XXXX."),
     "e": (".....", ".....", ".XXX.", "X...X", "XXXXX", "X....", ".XXXX"),
