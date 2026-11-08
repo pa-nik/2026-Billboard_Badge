@@ -33,8 +33,8 @@ from lib.led_bar import leds
 
 NAMES = ("YOUR NAME",)
 """Shown in turn, forever. Replace "YOUR NAME" with your own, using only the characters
-in FONT below (capitals A E F H I K M N O P R S U V Y, some lowercase, and space), or
-add more names to the tuple to cycle through them. Other letters need a 5 x 7 glyph."""
+in FONT below (the letters A to Z and a to z, é, and space), or add more names to the
+tuple to cycle through them. Digits and punctuation need a 5 x 7 glyph of their own."""
 
 BANNER_IMAGE = "/data/graphics/tetris_banner.png"
 """White lettering on red, 960 px wide, made on a computer by make_banner.py and
@@ -118,35 +118,60 @@ GLYPH_ROWS = 7
 FONT = {
     " ": ("...",) * GLYPH_ROWS,
     "A": (".XXX.", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
+    "B": ("XXXX.", "X...X", "X...X", "XXXX.", "X...X", "X...X", "XXXX."),
+    "C": (".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX."),
+    "D": ("XXXX.", "X...X", "X...X", "X...X", "X...X", "X...X", "XXXX."),
     "E": ("XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "XXXXX"),
     "F": ("XXXXX", "X....", "XXXX.", "X....", "X....", "X....", "X...."),
+    "G": (".XXXX", "X....", "X....", "X.XXX", "X...X", "X...X", ".XXXX"),
     "H": ("X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
     "I": ("XXX", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
+    "J": ("..XXX", "...X.", "...X.", "...X.", "...X.", "X..X.", ".XX.."),
     "K": ("X...X", "X..X.", "X.X..", "XX...", "X.X..", "X..X.", "X...X"),
+    "L": ("X....", "X....", "X....", "X....", "X....", "X....", "XXXXX"),
     "M": ("X...X", "XX.XX", "X.X.X", "X.X.X", "X...X", "X...X", "X...X"),
     "N": ("X...X", "XX..X", "XX..X", "X.X.X", "X..XX", "X..XX", "X...X"),
     "O": (".XXX.", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "P": ("XXXX.", "X...X", "X...X", "XXXX.", "X....", "X....", "X...."),
+    "Q": (".XXX.", "X...X", "X...X", "X...X", "X.X.X", "X..X.", ".XX.X"),
     "R": ("XXXX.", "X...X", "X...X", "XXXX.", "X.X..", "X..X.", "X...X"),
     "S": (".XXXX", "X....", "X....", ".XXX.", "....X", "....X", "XXXX."),
+    "T": ("XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "..X.."),
     "U": ("X...X", "X...X", "X...X", "X...X", "X...X", "X...X", ".XXX."),
     "V": ("X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
+    "W": ("X...X", "X...X", "X...X", "X.X.X", "X.X.X", "XX.XX", "X...X"),
+    "X": ("X...X", "X...X", ".X.X.", "..X..", ".X.X.", "X...X", "X...X"),
     "Y": ("X...X", "X...X", ".X.X.", "..X..", "..X..", "..X..", "..X.."),
+    "Z": ("XXXXX", "....X", "...X.", "..X..", ".X...", "X....", "XXXXX"),
+    # Lowercase letters have no descender, so every letter sits on the same floor.
     "a": (".....", ".....", ".XXX.", "....X", ".XXXX", "X...X", ".XXXX"),
     "b": ("X....", "X....", "XXXX.", "X...X", "X...X", "X...X", "XXXX."),
+    "c": (".....", ".....", ".XXXX", "X....", "X....", "X....", ".XXXX"),
+    "d": ("....X", "....X", ".XXXX", "X...X", "X...X", "X...X", ".XXXX"),
     "e": (".....", ".....", ".XXX.", "X...X", "XXXXX", "X....", ".XXXX"),
     # Acute accent in the two rows above the x-height.
     "é": ("...X.", "..X..", ".XXX.", "X...X", "XXXXX", "X....", ".XXXX"),
-    # No descender, so every letter sits on the same floor.
+    "f": ("..XX.", ".X...", "XXXX.", ".X...", ".X...", ".X...", ".X..."),
     "g": (".....", ".....", ".XXXX", "X...X", ".XXXX", "....X", ".XXX."),
     "h": ("X....", "X....", "X.XX.", "XX..X", "X...X", "X...X", "X...X"),
     "i": (".X.", "...", "XX.", ".X.", ".X.", ".X.", "XXX"),
+    "j": ("...X.", ".....", "...X.", "...X.", "...X.", "X..X.", ".XX.."),
     "k": ("X....", "X....", "X..X.", "X.X..", "XX...", "X.X..", "X..X."),
+    "l": ("XX.", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
+    "m": (".....", ".....", "XX.X.", "X.X.X", "X.X.X", "X.X.X", "X.X.X"),
     "n": (".....", ".....", "X.XX.", "XX..X", "X...X", "X...X", "X...X"),
     "o": (".....", ".....", ".XXX.", "X...X", "X...X", "X...X", ".XXX."),
+    "p": (".....", ".....", "XXXX.", "X...X", "XXXX.", "X....", "X...."),
+    "q": (".....", ".....", ".XXXX", "X...X", ".XXXX", "....X", "....X"),
     "r": (".....", ".....", "X.XX.", "XX..X", "X....", "X....", "X...."),
     "s": (".....", ".....", ".XXXX", "X....", ".XXX.", "....X", "XXXX."),
+    "t": (".X...", ".X...", "XXXX.", ".X...", ".X...", ".X..X", "..XX."),
+    "u": (".....", ".....", "X...X", "X...X", "X...X", "X...X", ".XXXX"),
     "v": (".....", ".....", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
+    "w": (".....", ".....", "X...X", "X...X", "X.X.X", "X.X.X", ".X.X."),
+    "x": (".....", ".....", "X...X", ".X.X.", "..X..", ".X.X.", "X...X"),
+    "y": (".....", ".....", "X...X", "X...X", ".XXXX", "....X", ".XXX."),
+    "z": (".....", ".....", "XXXXX", "...X.", "..X..", ".X...", "XXXXX"),
 }
 
 _BUILD = 0

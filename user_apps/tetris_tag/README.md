@@ -53,8 +53,9 @@ Edit the top of `tetris_tag.py`:
 
 - `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
   own name, or list several to cycle through them. Only characters in `FONT` can be
-  shown: capitals A E F H I K M N O P R S U V Y, some lowercase, and space. Add a glyph to
-  `FONT` for any other letter (5 wide, 7 tall, `X` is a block).
+  shown: the letters A to Z and a to z, é, and space. There are no digits or punctuation yet:
+  add a glyph to `FONT` for any other character (5 wide, 7 tall, `X` is a block). Long names
+  get small blocks and take longer, since the pieces fall a fixed number of rows per refresh.
 - `PIECES_AT_ONCE`, `SPAWN_PCT`, `FALL_ROWS`, `AUTO_TURN_PCT`: how many pieces fall at a time
   (1 or 2), the screen height they start from, how far they fall each refresh, and the
   screen height where an unturned piece starts turning itself.
