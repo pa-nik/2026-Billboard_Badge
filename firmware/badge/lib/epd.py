@@ -280,7 +280,8 @@ class EPaperDisplay:
             except Exception as ex:
                 print("EPD fast refresh unavailable:", ex)
                 self._fast_ok = False
-        return self._fast_ok
+        # Repeated failures: stop, so apps fall back instead of retrying forever.
+        return self._fast_ok and not (self._fast is not None and self._fast.failures >= 2)
 
     def _check_modes(self, grayscale, mixed, fast=False):
         if grayscale and mixed:
