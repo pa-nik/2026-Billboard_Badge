@@ -56,18 +56,24 @@ half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 
 ## Install
 
-This app needs the updated display driver on the badge (`lib/epd.py`,
-`lib/epd_fast.py`) as well as the app. From the repo root:
+This app needs the newer display driver on the badge as well as the app itself.
+Badges that shipped with older firmware are missing `epd_grayscale.py`,
+`rendered_luts.py` and an updated `large_png.py`, which the fast refresh and the
+new `epd.py` rely on. Run these from the repo root (`mpremote ls :lib :data` shows
+what is on the badge):
 
 ```
-mpremote ls :lib :data
-mpremote cp firmware/badge/lib/epd.py firmware/badge/lib/epd_fast.py :lib/
-mpremote cp user_apps/tetris_nametag/tetris_nametag.py :apps/
+mpremote cp firmware/badge/lib/epd.py :lib/epd.py
+mpremote cp firmware/badge/lib/epd_fast.py :lib/epd_fast.py
+mpremote cp firmware/badge/lib/epd_grayscale.py :lib/epd_grayscale.py
+mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
+mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
+mpremote cp user_apps/tetris_nametag/tetris_nametag.py :apps/tetris_nametag.py
+mpremote reset
 ```
 
-`ls` should show `epd_grayscale.py` in `:lib` and `rendered_luts.py` in `:data`,
-which come with recent firmware. If either is missing, copy it from
-`firmware/badge/` too. Then restart the badge and select "Tetris Name".
+Then select "Tetris Name" from the menu.
 
-Don't use `scripts/update.py push` after copying the app: it deletes anything on
-the badge that is not in `firmware/badge/`, including this app.
+Alternatively, `python scripts/update.py push` from `firmware/` brings the whole badge up
+to date, but it deletes anything on the badge that is not in `firmware/badge/`,
+including this app, so copy the app again afterwards.
