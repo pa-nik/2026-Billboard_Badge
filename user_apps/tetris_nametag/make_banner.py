@@ -29,7 +29,7 @@ WIDTH = 960
 HEIGHT = 672
 SUPERSAMPLE = 4  # draw big, shrink, then threshold: clean edges on a 1-bit panel
 
-DEFAULT_TEXT = "ТЕТРИС ☭  TAG"  # "ТЕТРИС ☭  TAG"
+DEFAULT_TEXT = "ТЕТРИС ☭ TAG"  # "ТЕТРИС ☭ TAG"
 MAIN_FONT = "/System/Library/Fonts/Helvetica.ttc"
 MAIN_FACE = "Helvetica Bold"
 SYMBOL_FONTS = (  # tried in order; globs allowed

@@ -25,7 +25,7 @@ Edit the top of `tetris_nametag.py`:
 
 ## Banner
 
-A red banner runs across the top 25% of the screen, with "ТЕТРИС ☭  TAG" in white
+A red banner runs across the top 25% of the screen, with "ТЕТРИС ☭ TAG" in white
 Helvetica Bold centred on it. Pieces fall in the space below it.
 
 The lettering is an image, `tetris_banner.png`, not text drawn by the badge: the badge
