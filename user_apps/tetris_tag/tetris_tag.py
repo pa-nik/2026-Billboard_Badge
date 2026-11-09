@@ -1,5 +1,6 @@
 """Tetris Tag. Tetris-like pieces fall and stack up to spell a name along the
-bottom edge of the screen, the name blinks, stays up for HOLD_S seconds, then it is
+bottom edge of the screen, the name blinks, stays up for HOLD_S seconds, then the
+Faberrgen screen comes in line by line and stays up for INFO_HOLD_S seconds, then it is
 built again (or the next name, if NAMES lists more than one).
 
 User A: turn the left falling piece 90 degrees clockwise
@@ -7,8 +8,8 @@ User B: turn the right falling piece 90 degrees clockwise
 (between names, User A skips to the next name and User B restarts the current one)
 
 A red banner with white Helvetica Bold lettering and the two players' score boards runs
-across the top of the screen, and a red footer across the bottom 25% (your web address or
-social handles); the name stands above it.
+across the top of the screen, and a red footer across the bottom 25% (www.faberrgen.com);
+the name stands above it.
 The lettering is an image made on a computer by make_banner.py. Edit NAMES and the
 settings below to make it your own.
 
@@ -79,13 +80,12 @@ FOOTER_PCT = 25
 It is drawn by the one full refresh when the app is launched and stays on the screen all
 the time; the name lands right above it. 0 for no footer."""
 
-FOOTER_IMAGE = "/data/graphics/tetris_footer.png"
-"""White lettering on red, 960 px wide, for your web address or social handles, centred in
-the band. Make it on a computer with make_banner.py, at the same font size as the top
-banner's lettering (78 px):
+FOOTER_IMAGE = "/data/graphics/faberrgen_footer.png"
+"""White lettering on red, 960 px wide, made by make_faberrgen.py (it is the same band as
+on the Faberrgen screen). For your own text make one with make_banner.py, e.g.
     python3 make_banner.py --text "web / @socials" --pct 25 --size 78 --out tetris_footer.png
-and copy it to the badge (see the README). If the file is missing the footer is a plain
-red band."""
+(78 px is the top banner's lettering size) and point FOOTER_IMAGE at it. If the file is
+missing the footer is a plain red band."""
 
 SCOREBOARD = True
 """Show a score board for each player at the two ends of the top banner (SCORE, LINES, the
@@ -111,6 +111,25 @@ BLINK_COLOR = (20, 20, 20)
 HOLD_S = 30
 """Seconds the finished name stays on the screen, after the blinking, before the next
 round starts. User A skips the wait to the next name, User B restarts this one."""
+
+INFO_SCREEN = True
+"""After the finished name has been held, show the Faberrgen screen (three definition
+lines and an emoji line, between the two red bands) before the next round. The images
+come from make_faberrgen.py and must be in /data/graphics on the badge; a missing one is
+skipped."""
+
+INFO_DIR = "/data/graphics/"
+"""Where the Faberrgen images are on the badge."""
+
+INFO_FILES = ("faberrgen_row0.png", "faberrgen_row1.png", "faberrgen_row2.png",
+              "faberrgen_emoji1.png", "faberrgen_emoji2.png", "faberrgen_emoji3.png",
+              "faberrgen_emoji4.png", "faberrgen_emoji5.png")
+"""Drawn one per refresh, in this order. The first three are rows 0 to 2 (the lines); the
+rest are all row 3 (the emoji line, one more emoji in each). The rows fill the space
+between the red banner and the red footer, which stay on the screen all the time."""
+
+INFO_HOLD_S = 30
+"""Seconds the finished Faberrgen screen stays up before the next round."""
 
 FAST = True
 """Use partial refreshes (lib/epd_partial.py) where the panel and firmware support
@@ -231,6 +250,9 @@ _BLINK = 1
 _CLEAR = 2
 _DROP = 3
 _HOLD = 4
+_INFO_CLEAR = 5
+_INFO_STEP = 6
+_INFO_HOLD = 7
 
 _FULL = 1  # what the screen task is asked to do: a normal refresh of the whole panel,
 _PART = 2  # or a partial one of what changed
@@ -899,6 +921,8 @@ class TetrisTagApp(BaseApp):
         self.film = None  # the black plane a normal refresh is about to draw
         self.need_full = True  # the next name starts with the one full refresh (red bands)
         self.wipe_step = 0
+        self.info_step = 0  # which of INFO_FILES comes in next
+        self.hold_armed = False  # the Faberrgen screen's wait has started
         self.score = [0, 0]  # left and right player
         self.lines = [0, 0]  # letters finished
         self.glyph_left = []  # pieces still to land in each letter
@@ -1157,6 +1181,48 @@ class TetrisTagApp(BaseApp):
         self.hold_ms = time.ticks_ms()
         print(f"Holding {NAMES[self.word]} for {HOLD_S} s")
 
+    def _start_info(self):
+        """The Faberrgen screen: the middle wiped, then the lines come in."""
+        self.state = _INFO_CLEAR
+        self.info_step = 0
+        self.wipe_step = 0
+        print("Faberrgen screen")
+
+    def _info_rows(self):
+        """(top of the first row, row height) of the Faberrgen rows between the two bands."""
+        top = self.banner.height
+        return top, (display_height - top - self.banner.foot) // 4
+
+    def _info_draw(self, step):
+        """Draw strip `step` of INFO_FILES into the framebuffer, on top of what is there."""
+        top, row_h = self._info_rows()
+        row = min(step, 3)
+        try:
+            display.draw_png(INFO_DIR + INFO_FILES[step], top + row * row_h, 0)
+        except Exception as ex:  # missing file, not a palette PNG, ...
+            print("Faberrgen image not drawn:", INFO_FILES[step], ex)
+
+    def _info_next(self):
+        """Bring in the next line or emoji with a partial refresh."""
+        if not self.fast:
+            # No partial refresh: everything at once, with one more full refresh.
+            for step in range(self.info_step, len(INFO_FILES)):
+                self._info_draw(step)
+            self._full()
+            self.info_step = len(INFO_FILES)
+            self._info_hold()
+            return
+        self._info_draw(self.info_step)
+        self._request(_PART)
+        self.info_step += 1
+        if self.info_step >= len(INFO_FILES):
+            self._info_hold()
+
+    def _info_hold(self):
+        """The screen is complete. The wait starts once the last refresh has finished."""
+        self.state = _INFO_HOLD
+        self.hold_armed = False
+
     def _wipe(self, then):
         """Clear the area between the two red bands with partial refreshes instead of a full
         one: all black for a refresh, then all white, which also takes the ghosts off. The
@@ -1265,6 +1331,20 @@ class TetrisTagApp(BaseApp):
                 self._start_blink()
         elif self.state == _HOLD:
             if time.ticks_diff(time.ticks_ms(), self.hold_ms) >= HOLD_S * 1000:
+                if INFO_SCREEN:
+                    self._start_info()
+                else:
+                    self._start_word(self.word + 1)
+        elif self.state == _INFO_CLEAR:
+            self._wipe(_INFO_STEP)
+        elif self.state == _INFO_STEP:
+            self._info_next()
+        elif self.state == _INFO_HOLD:
+            if not self.hold_armed:
+                self.hold_armed = True
+                self.hold_ms = time.ticks_ms()
+                print(f"Holding the Faberrgen screen for {INFO_HOLD_S} s")
+            elif time.ticks_diff(time.ticks_ms(), self.hold_ms) >= INFO_HOLD_S * 1000:
                 self._start_word(self.word + 1)
         elif BLINK_MODE == "leds":
             self._blink_leds()

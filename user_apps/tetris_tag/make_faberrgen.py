@@ -17,9 +17,8 @@ stay on the screen from the game:
 
     faberrgen_row0.png .. row2.png   the three definition lines (black on white)
     faberrgen_emoji1.png .. emoji5.png  the emoji row, one more emoji in each (black)
-    faberrgen_emoji_red.png          the finished emoji row in red, for the full refresh
-                                     that turns the black emoji red at the end
-    faberrgen_footer.png             white Helvetica Bold on a red band, bottom 25%
+    faberrgen_footer.png             white Helvetica Bold on a red band, bottom 25%, at the
+                                     font size of the top banner (FOOTER_FONT_SIZE, 78 px)
 
 Every strip is 960 px wide and one row tall (a quarter of the 336 px between the two
 bands, 84 px), so the app only needs to know the row number. All text is Helvetica Bold from
@@ -48,6 +47,7 @@ LINES = (("Fab", "fabricate"), ("err", "(make) error(s)"), ("g\u00e9n", "generat
 EMOJI_GROUPS = (("\U0001F3ED",), ("\U0001F95A", "⚙️", "\U0001F423"), ("\U0001F425",))
 # The emoji line is "🏭 🥚⚙️🐣 🐥": a space between groups, none inside a group.
 FOOTER_TEXT = "www.faberrgen.com"
+FOOTER_FONT_SIZE = 78  # px: the same as the lettering of the top banner
 EMOJI_FONT = "/System/Library/Fonts/Apple Color Emoji.ttc"
 
 
@@ -65,9 +65,9 @@ def save_1bit(mask, path, ink=(0, 0, 0)):
     out.save(path, bits=1, optimize=True)
 
 
-def text_strips(font_path, face, margin, size_cap, threshold=True):
-    """The three definition lines, '=' signs lined up, the block centred. With threshold
-    False the masks keep their anti-aliased grey levels (for the layered design file)."""
+def definition_layout(font_path, face, margin, size_cap):
+    """Where the three definition lines go: the font size and, in pixels (strip coordinates),
+    the left edges of the three columns (word, '=', meaning) and the baseline."""
     w, h = strip_size()
     index = make_banner.face_index(font_path, face)
 
@@ -89,22 +89,33 @@ def text_strips(font_path, face, margin, size_cap, threshold=True):
             break
         size -= 1
     big = size * SUPERSAMPLE
-    f = font_at(big)
     col1, eq, gap, col2 = widths(big)
     block = col1 + eq + col2 + 2 * gap
     x0 = (WIDTH * SUPERSAMPLE - block) / 2
-    cap = f.getbbox("H", anchor="ls")
+    cap = font_at(big).getbbox("H", anchor="ls")
     base = (h * SUPERSAMPLE + (cap[3] - cap[1])) / 2  # baseline: capitals centred in the row
+    s = SUPERSAMPLE
+    return {"size": size, "x": (x0 / s, (x0 + col1 + gap) / s, (x0 + col1 + gap + eq + gap) / s), "base": base / s}
+
+
+def text_strips(font_path, face, margin, size_cap, threshold=True):
+    """The three definition lines, '=' signs lined up, the block centred. With threshold
+    False the masks keep their anti-aliased grey levels (for the layered design file)."""
+    w, h = strip_size()
+    lay = definition_layout(font_path, face, margin, size_cap)
+    f = ImageFont.truetype(font_path, lay["size"] * SUPERSAMPLE, index=make_banner.face_index(font_path, face))
+    xs = [x * SUPERSAMPLE for x in lay["x"]]
+    base = lay["base"] * SUPERSAMPLE
     strips = []
     for left, right in LINES:
         canvas = Image.new("L", (WIDTH * SUPERSAMPLE, h * SUPERSAMPLE), 0)
         d = ImageDraw.Draw(canvas)
-        d.text((x0, base), left, font=f, fill=255, anchor="ls")
-        d.text((x0 + col1 + gap, base), "=", font=f, fill=255, anchor="ls")
-        d.text((x0 + col1 + gap + eq + gap, base), right, font=f, fill=255, anchor="ls")
+        d.text((xs[0], base), left, font=f, fill=255, anchor="ls")
+        d.text((xs[1], base), "=", font=f, fill=255, anchor="ls")
+        d.text((xs[2], base), right, font=f, fill=255, anchor="ls")
         mask = canvas.resize((w, h), Image.LANCZOS)
         strips.append(mask.point(lambda v: 255 if v >= 128 else 0) if threshold else mask)
-    return strips, size
+    return strips, lay["size"]
 
 
 def emoji_rgba(ch, height):
@@ -163,6 +174,93 @@ def emoji_strips(style, emoji_px, in_gap, group_gap):
     return strips
 
 
+class _Plane:
+    """Stand-in for one bit plane of the badge's display: fill_rect on a 960 x 672 grid."""
+
+    def __init__(self):
+        self.rows = [bytearray(WIDTH) for _ in range(HEIGHT)]
+
+    def fill_rect(self, x, y, w, h, value):
+        for yy in range(y, y + h):
+            self.rows[yy][x:x + w] = bytes([value]) * w
+
+
+def load_app():
+    """tetris_tag.py loaded on this computer, with stand-ins for the badge's modules, so the
+    design file can use the app's own drawing code for the score boards."""
+    import types
+
+    def module(name, **attrs):
+        m = types.ModuleType(name)
+        m.__dict__.update(attrs)
+        sys.modules[name] = m
+        return m
+
+    class Display:
+        def __init__(self):
+            self.black, self.red = _Plane(), _Plane()
+
+    display = Display()
+    button = types.SimpleNamespace(pressed=lambda: False, value=False)
+    module("lib")
+    module("framebuf", MONO_HLSB=1, FrameBuffer=lambda *a: None)
+    module("lib.button", UserA=button, UserB=button)
+    module("lib.epd", display=display, display_width=WIDTH, display_height=HEIGHT)
+    module("lib.led_bar", leds=types.SimpleNamespace(fill=lambda c: None, write=lambda: None), NUM_LEDS=8)
+    module("apps")
+    module("apps.base_app", BaseApp=type("BaseApp", (), {}))
+    src = "from __future__ import annotations\n" + (Path(__file__).with_name("tetris_tag.py")).read_text(encoding="utf-8")
+    app = types.ModuleType("tetris_tag")
+    exec(compile(src, "tetris_tag.py", "exec"), app.__dict__)
+    return app, display
+
+
+# A game in progress, for the score boards in the design file: (score, letters, next piece).
+SAMPLE_SCORES = ((120, 340), (3, 5), ([(0, 0), (1, 0), (2, 0), (1, 1)], [(0, 0), (0, 1), (1, 1), (1, 2)]))
+SAMPLE_SECONDS = 83
+
+
+def scoreboard_layers():
+    """The score boards of the top banner as the app draws them, as separate RGBA images the
+    size of the band: {name: image}. Drawn by the app's own code (_Hud), with a sample game."""
+    app, display = load_app()
+    band = HEIGHT * BANNER_PCT // 100
+    for y in range(band):  # the red band
+        display.red.rows[y][:] = b"\x01" * WIDTH
+    hud = app._Hud(0)
+    hud.draw_static()
+    static_red = [bytes(r) for r in display.red.rows[:band]]
+    scores, lines, nexts = SAMPLE_SCORES
+    hud.draw_values(scores, lines, nexts, SAMPLE_SECONDS)
+    black = [bytes(r) for r in display.black.rows[:band]]
+    tx, ty, tw, th = hud.tx, hud.ty, app._TIMER_W, app._TIMER_H
+
+    def image(pixel):
+        img = Image.new("RGBA", (WIDTH, band), (0, 0, 0, 0))
+        px = img.load()
+        for y in range(band):
+            for x in range(WIDTH):
+                colour = pixel(x, y)
+                if colour:
+                    px[x, y] = colour
+        return img
+
+    in_timer = lambda x, y: tx <= x < tx + tw and ty <= y < ty + th
+    return {
+        # white: the lettering, the button circles and the empty boxes (the red plane cleared)
+        "Score boards: lettering and boxes (white)":
+            image(lambda x, y: (255, 255, 255, 255) if static_red[y][x] == 0 and not in_timer(x, y) else None),
+        # black: the numbers and the next pieces, in their boxes
+        "Score boards: numbers and next pieces (black)":
+            image(lambda x, y: (0, 0, 0, 255) if black[y][x] and not in_timer(x, y) else None),
+        # the timer: a black box, and its white digits on top
+        "Timer: box (black)":
+            image(lambda x, y: (0, 0, 0, 255) if in_timer(x, y) else None),
+        "Timer: digits (white)":
+            image(lambda x, y: (255, 255, 255, 255) if in_timer(x, y) and not black[y][x] else None),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=".", help="directory for the PNGs")
@@ -180,10 +278,9 @@ def main():
     strips = emoji_strips(args.style, args.emoji_size, 8, 40)
     for n, strip in enumerate(strips, start=1):
         save_1bit(strip, out / f"faberrgen_emoji{n}.png")
-    save_1bit(strips[-1], out / "faberrgen_emoji_red.png", ink=(255, 0, 0))
     subprocess.run([sys.executable, str(Path(__file__).with_name("make_banner.py")), "--text", FOOTER_TEXT,
-                    "--pct", str(FOOTER_PCT), "--out", str(out / "faberrgen_footer.png")], check=True)
-    print(f"text size {size} px, strips {strip_size()}, emoji {args.style}; wrote 10 PNGs to {out.resolve()}")
+                    "--pct", str(FOOTER_PCT), "--size", str(FOOTER_FONT_SIZE), "--out", str(out / "faberrgen_footer.png")], check=True)
+    print(f"text size {size} px, strips {strip_size()}, emoji {args.style}; wrote 9 PNGs to {out.resolve()}")
 
 
 if __name__ == "__main__":

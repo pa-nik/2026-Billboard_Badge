@@ -4,7 +4,8 @@ Tetris Tag takes inspiration from Tetris to assemble your name on the badge. Use
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
 the screen, two at a time, and you steer them. The name blinks three times, stays up for
-30 seconds, then it is built again, and it loops forever. It ships with the placeholder
+30 seconds, then the Faberrgen screen comes in (see below) and stays up for 30 seconds, then
+the name is built again, and it loops forever. It ships with the placeholder
 "YOUR NAME"; put your own in `NAMES` (see below).
 
 Concept by the Soviet people, execution by [pa-nik](https://github.com/pa-nik) & Claude.
@@ -28,7 +29,7 @@ mpremote cp firmware/badge/lib/epd_partial.py :lib/epd_partial.py
 mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
 mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
 mpremote cp user_apps/tetris_tag/tetris_banner.png :data/graphics/tetris_banner.png
-mpremote cp user_apps/tetris_tag/tetris_footer.png :data/graphics/tetris_footer.png
+mpremote cp user_apps/tetris_tag/faberrgen/*.png :data/graphics/
 mpremote cp user_apps/tetris_tag/tetris_tag.py :apps/tetris_tag.py
 mpremote reset
 ```
@@ -73,9 +74,11 @@ Edit the top of `tetris_tag.py`:
 ## Footer
 
 A second red band runs across the bottom 25% of the screen, and the name stands above it (see
-"Where the name sits" below). It is meant for your web address or social handles; it ships with
-the placeholder "web / @socials", in white Helvetica Bold, centred in the band at the same font
-size as the lettering of the top banner. Make your own on your computer:
+"Where the name sits" below). It reads `www.faberrgen.com` (`faberrgen/faberrgen_footer.png`, made
+by `make_faberrgen.py`), in white Helvetica Bold at the same font size as the lettering of the top
+banner (78 px). For your own web address or social handles make
+a band on your computer (this one is the placeholder "web / @socials" in `tetris_footer.png`, at
+the same font size as the lettering of the top banner) and point `FOOTER_IMAGE` at it:
 
 ```
 python3 make_banner.py --text "yourname.com" --pct 25 --size 78 --out tetris_footer.png
@@ -134,6 +137,39 @@ redraw. The timer is the other way round, white digits on a black box: a black b
 just as well as a white one, because the box is not red (the full refresh leaves it black) and the
 partial refresh only has to switch its pixels between black and white. Only those boxes are ever
 changed after launch, so the red is never touched.
+
+## The Faberrgen screen
+
+After the finished name has been held, a second screen comes in before the next round:
+"Fab = fabricate", "err = (make) error(s)" and "gén = generate" appear one at a time, then
+the emoji line 🏭 🥚⚙️🐣 🐥 one emoji at a time. It sits between the same two red bands as the
+game (the top banner with the score boards, and the footer), so no full refresh is needed to
+get to it. The middle is wiped with two partial refreshes first (see "Partial refresh"). It stays
+up for `INFO_HOLD_S` seconds (30), then the name is built again. `INFO_SCREEN = False` turns it
+off. A press of User A or B skips it.
+
+The emoji are black: a partial refresh cannot make red, so the screen never needs a full refresh.
+
+The screen is nine images in `faberrgen/` (the three lines, the five emoji steps and the
+footer), made on your computer by `make_faberrgen.py`
+(`pip install pillow fonttools`, then `python3 make_faberrgen.py --out faberrgen`; text is
+Helvetica Bold and the emoji are Apple Color Emoji, from macOS). Each line and each emoji is a
+partial refresh of about 0.65 s. The emoji are dithered black and white (`--style threshold`
+makes solid shapes). A missing image is skipped (and printed over serial).
+
+For editing, `faberrgen/design/faberrgen_screen.psd` is a layered Photoshop file of the whole
+screen (PhotoCraft, Photoshop, Krita and GIMP open it) at the badge's size and position
+(960 x 672), with a flattened `faberrgen_screen_preview.png` beside it. Layers: the top banner
+(red band, the title, and the two score boards and the timer exactly as the app draws them, with a
+sample game in progress: lettering and boxes, numbers and next pieces, timer box and digits), the
+three definition columns, the five emoji and the footer. The title, the definitions and the footer
+are live text layers (Helvetica Bold, the title's hammer and sickle in Apple Symbols) that also
+carry their pixels, so an editor that does not read text layers shows the same picture. The
+score boards use the badge's own block letters, which are not a font, so they are pixel layers, and
+so are the emoji. `make_faberrgen_psd.py` (`pip install pillow fonttools psd-tools`; it uses
+`make_faberrgen.py`, which runs the app's own score board code, and `psd_text.py`, which writes the
+text layers) builds the file. The file is a reference: the badge images still come from
+`make_faberrgen.py`, so an edit made only in the layered file does not reach the badge.
 
 ## Banner
 
@@ -218,12 +254,14 @@ half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 (name, blank, name...), but each step is at least one drive step, so it is much slower.
 
 When the blinking is over the finished name stays on the screen, untouched, for `HOLD_S`
-seconds (30) before the next round starts with a partial wipe. User A skips the wait to
-the next name and User B restarts the current one right away.
+seconds (30), then the Faberrgen screen comes in (`INFO_HOLD_S`, 30 s), then the next round
+starts with a partial wipe. User A skips the wait to the next name and User B restarts the
+current one right away.
 
 ## Installing
 
-The commands at the top copy the app, its two banner images and the display files it needs.
+The commands at the top copy the app, the banner image, the nine Faberrgen images (the footer
+and the Faberrgen screen) and the display files it needs.
 The app needs the newer display driver on the badge as well as the app itself. Badges that
 shipped with older firmware are missing `rendered_luts.py`, which the partial refresh uses, and
 an updated `epd.py` (it has the display lock) and `large_png.py`, which `epd_partial.py` relies on. `mpremote ls :lib :data` shows

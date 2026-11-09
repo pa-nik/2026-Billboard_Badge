@@ -1,2 +1,8 @@
 # Local reference material, not part of the project
 /references/
+
+# Generated layered design file (make_faberrgen_psd.py); not part of the firmware
+/user_apps/tetris_tag/faberrgen/design/
+
+# macOS folder metadata
+.DS_Store
