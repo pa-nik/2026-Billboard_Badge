@@ -31,6 +31,7 @@ the pieces landed (black) and the next few still in the air (red).
 import asyncio as aio
 import framebuf
 import gc
+import math
 import random
 import sys
 import time
@@ -144,6 +145,21 @@ CAT_STEP_PX = 72
 CAT_GAP_PX = 8
 """Space between the bottom of the banner and the top of the sitting cat."""
 
+SAND = True
+"""Sand under the name: an evenly stippled ground from just under the letters to the bottom of
+the screen, with small hills and valleys along its top edge (no line: the edge of the grains).
+The letters stand on it, so they overlap the hills a little. It is drawn once per round (new
+dunes every round) and kept as a copy of its rows, so it costs the frames almost nothing."""
+
+SAND_DENSITY = 28
+"""How many of every 100 squares of 4 x 4 pixels get a grain (a 2 x 2 pixel black dot), the
+same everywhere in the sand: 28 is about 7% of the pixels black."""
+
+SAND_HILL_PX = 22
+"""How much higher the top of a hill is than a valley, in pixels. The valleys are as low as
+the bottom of the letters, the hills rise as far as the lowest row of blocks (20 px) and
+a little more, so the letters seem to stand in the sand."""
+
 FAST = True
 """Use partial refreshes (lib/epd_partial.py) where the panel and firmware support
 them. False forces the slideshow."""
@@ -196,7 +212,7 @@ FONT = {
     "C": (".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX."),
     "D": ("XXXX.", "X...X", "X...X", "X...X", "X...X", "X...X", "XXXX."),
     "E": ("XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "XXXXX"),
-    "F": ("XXXXX", "X....", "XXXX.", "X....", "X....", "X....", "X...."),
+    "F": ("XXXXX", "X....", "X....", "XXXX.", "X....", "X....", "X...."),  # E without its bottom bar
     "G": (".XXXX", "X....", "X....", "X.XXX", "X...X", "X...X", ".XXXX"),
     "H": ("X...X", "X...X", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
     "I": ("XXX", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"),
@@ -586,76 +602,80 @@ def _disc(plane, cx, cy, r, value):
 
 _CAT_WALK = (  # four walking poses, facing right; # is a black block (CAT_SCALE px)
     (
-        "...........................",
-        "..###...............#....#.",
-        ".##.#...............##..##.",
-        ".##.................######.",
-        ".##...............########.",
-        ".##...#####################",
-        ".##########################",
-        ".#########################.",
-        "....####################...",
-        "......#############........",
-        "......##.##......####......",
-        ".....##..##.......###......",
-        ".....##..##.......###......",
-        "....##...##........##......",
-        "....##...##........##......",
-        "...###...###.......####....",
+        "............................",
+        "..###................#....#.",
+        ".##.#................##..##.",
+        ".##..................######.",
+        ".##................########.",
+        ".##...######################",
+        ".###########################",
+        ".##########################.",
+        "...######################...",
+        "....#################.......",
+        ".....#################......",
+        ".......##############.......",
+        "......##.##.......####......",
+        ".....##..##........###......",
+        "....##...##.........##......",
+        "....##...##.........##......",
+        "...###...###........####....",
     ),
     (
-        "...........................",
-        "..###...............#....#.",
-        ".##.#...............##..##.",
-        ".##.................######.",
-        ".##...............########.",
-        ".##...#####################",
-        ".##########################",
-        ".#########################.",
-        "....####################...",
-        "......#############........",
-        "......##.##......####......",
-        "......##.##......####......",
-        "......##.##......####......",
-        ".....##...##......##.......",
-        ".....##...##......##.......",
-        ".....###..###.....###......",
+        "............................",
+        "..###................#....#.",
+        ".##.#................##..##.",
+        ".##..................######.",
+        ".##................########.",
+        ".##...######################",
+        ".###########################",
+        ".##########################.",
+        "...######################...",
+        "....#################.......",
+        ".....#################......",
+        ".......##############.......",
+        "......##.##.......####......",
+        "......##.##.......####......",
+        "......##.##.......####......",
+        ".....##...##.......##.......",
+        ".....###..###......###......",
     ),
     (
-        "...........................",
-        "..###...............#....#.",
-        ".##.#...............##..##.",
-        ".##.................######.",
-        ".##...............########.",
-        ".##...#####################",
-        ".##########################",
-        ".#########################.",
-        "....####################...",
-        "......#############........",
-        "......##.##......####......",
-        "......##.##......##.##.....",
-        ".......###......##..##.....",
-        ".......###......##...##....",
-        ".......###.....##....##....",
-        ".......####....###....###..",
+        "............................",
+        "..###................#....#.",
+        ".##.#................##..##.",
+        ".##..................######.",
+        ".##................########.",
+        ".##...######################",
+        ".###########################",
+        ".##########################.",
+        "...######################...",
+        "....#################.......",
+        ".....#################......",
+        ".......##############.......",
+        "......##.##.......####......",
+        "......##.##.......##.##.....",
+        ".......###.......##...##....",
+        ".......###......##....##....",
+        ".......####.....###....###..",
     ),
     (
-        "...........................",
-        "..###...............#....#.",
-        ".##.#...............##..##.",
-        ".##.................######.",
-        ".##...............########.",
-        ".##...#####################",
-        ".##########################",
-        ".#########################.",
-        "....####################...",
-        "......#############........",
-        ".......####......####......",
-        ".......####......####......",
-        ".......####......####......",
-        ".......####......####......",
-        ".......####......####......",
-        ".......#####.....#####.....",
+        "............................",
+        "..###................#....#.",
+        ".##.#................##..##.",
+        ".##..................######.",
+        ".##................########.",
+        ".##...######################",
+        ".###########################",
+        ".##########################.",
+        "...######################...",
+        "....#################.......",
+        ".....#################......",
+        ".......##############.......",
+        ".......####.......####......",
+        ".......####.......####......",
+        ".......####.......####......",
+        ".......####.......####......",
+        ".......#####......#####.....",
     ),
 )
 
@@ -718,6 +738,48 @@ def _draw_cat_at(plane, rows, rump, cx, face):
         rump = len(rows[0]) - 1 - rump
     _draw_sprite(plane, rows, int(cx - (rump + 0.5) * CAT_SCALE),
                  _cat_ground() - len(rows) * CAT_SCALE, CAT_SCALE)
+
+
+def _noise(a, b, seed):
+    """A fixed 16-bit scramble of two numbers and a seed (small ints only: no slow big numbers)."""
+    h = (a * 157 + b * 311 + seed) & 0xFFFF
+    h = ((h ^ (h >> 7)) * 251 + 29) & 0xFFFF
+    h = ((h ^ (h >> 5)) * 241 + 61) & 0xFFFF
+    return h ^ (h >> 8)
+
+
+_SAND_STRIP = 6  # width of one step of the top of the sand
+_SAND_GRAIN = 4  # the grains of sand sit in a grid of squares this big
+
+
+def _sand_profile(valley, seed):
+    """The y of the top line of the sand for each strip of _SAND_STRIP pixels: hills and valleys
+    (SAND_HILL_PX apart, in steps of 2 px) from two slow waves and a little noise. A valley is at
+    `valley`."""
+    ph1 = (seed % 628) / 100.0
+    ph2 = ((seed // 7) % 628) / 100.0
+    out = []
+    for i in range(display_width // _SAND_STRIP):
+        v = (0.50 * math.sin(i / 6.0 + ph1) + 0.38 * math.sin(i / 2.6 + ph2)
+             + 0.12 * (_noise(i, 3, seed) % 100 / 50.0 - 1.0))
+        h = int((v + 1.0) / 2.0 * SAND_HILL_PX + 0.5)
+        out.append(valley - h // 2 * 2)
+    return out
+
+
+def _draw_sand_into(plane, profile, seed):
+    """Draw the sand into a bit plane: grains, evenly spread (SAND_DENSITY), from the top
+    profile down to the bottom of the screen. There is no line: the hills and valleys show only
+    as the edge of the grains."""
+    strip = _SAND_STRIP
+    g = _SAND_GRAIN
+    for cy in range(min(profile) // g * g, display_height - 2, g):
+        for cx in range(0, display_width - 3, g):
+            if cy < profile[cx // strip]:
+                continue
+            n = _noise(cx // g, cy // g, seed)
+            if n % 100 < SAND_DENSITY:
+                plane.fill_rect(cx + ((n >> 8) & 1), cy + ((n >> 9) & 1), 2, 2, 1)
 
 
 _HUD_W = 149  # how wide a player's panel is
@@ -917,6 +979,7 @@ class _Plan:
         # y_off shifts the grid down by what is left over after whole rows.
         floor = (display_height - display_height * FOOTER_PCT // 100 - BOTTOM_MARGIN
                  - int(display_height * NAME_RISE_PCT / 100))
+        self.floor = floor  # the bottom of the name
         self.field_rows = floor // self.cell
         self.y_off = floor - self.field_rows * self.cell
         self.y_grid = self.field_rows - GLYPH_ROWS
@@ -1143,6 +1206,9 @@ class TetrisTagApp(BaseApp):
         self.cat_steps = 0  # in this many refreshes
         self.cat_k = 0  # and this is the one it is at
         self.cat_ready = False  # it is sitting where the next piece falls
+        self.sand_seed = 0  # this round's dunes
+        self.sand_y = 0  # the top row of the sand, and its rows kept as a copy (None: not drawn yet)
+        self.sand_cache = None
         self.score = [0, 0]  # left and right player
         self.lines = [0, 0]  # letters finished
         self.glyph_left = []  # pieces still to land in each letter
@@ -1183,6 +1249,8 @@ class TetrisTagApp(BaseApp):
             self.landed = []
             self.cat_x = None
             self.cat_ready = False
+            self.sand_cache = None  # new dunes
+            self.sand_seed = random.randint(0, 9999)
             self.state = _CLEAR
             print(f"{NAMES[self.word]}: {len(self.order)} pieces in {len(self.waves)} waves, "
                   f"cell {plan.cell}px")
@@ -1280,11 +1348,30 @@ class TetrisTagApp(BaseApp):
             self.banner.draw()
             self._draw_hud()
             self.screen_ready = True
+            self._draw_sand()
             return
         top = self.banner.height
         rows = display_height - self.banner.foot - top  # between the two bands
         display.black.fill_rect(0, top, display_width, rows, 0)
         display.red.fill_rect(0, top, display_width, rows, 0)
+        self._draw_sand()
+
+    def _draw_sand(self):
+        """The sand, on a field that has just been cleared. The first time in a round it is drawn
+        and its rows are kept; after that they are copied back (one memory copy, no drawing)."""
+        if not SAND or self.plan is None or self.banner.foot:
+            return
+        pitch = display_width // 8
+        buf = display._framebuffer_black
+        if self.sand_cache is None:
+            t0 = time.ticks_ms()
+            profile = _sand_profile(self.plan.floor - self.plan.gap, self.sand_seed)
+            _draw_sand_into(display.black, profile, self.sand_seed)
+            self.sand_y = min(profile)
+            self.sand_cache = bytes(buf[self.sand_y * pitch:])
+            print("Sand drawn in", time.ticks_diff(time.ticks_ms(), t0), "ms, top row", self.sand_y)
+        else:
+            memoryview(buf)[self.sand_y * pitch:] = self.sand_cache
 
     def _show(self, landed, in_air=()):
         """Slideshow: queue a snapshot, landed pieces in black, in the air in red."""

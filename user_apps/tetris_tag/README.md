@@ -102,6 +102,24 @@ down to one row a refresh, so that a player gets at least `MIN_PRESS_FRAMES` (3)
 with a margin of 75 px or the line at 50% a player would get one refresh. `NAME_RISE_PCT` lifts
 the name and leaves less time.
 
+### The sand
+
+Under the name is sand: an evenly stippled ground from the bottom of the letters to the bottom of
+the screen (about 75 to 95 px). There is no line along the top: the hills and valleys show only
+as the ragged edge of the grains (the edge moves in steps of 6 px across and 2 px high;
+`SAND_HILL_PX` = 22 px from the lowest valley to the highest hill). The valleys are as low as the
+bottom of the letters and the hills rise a little more than the lowest row of blocks, so the
+letters seem to stand in the sand; the white hollow blocks are drawn over it. The grains are 2 x 2
+px black dots, one in 28 of the squares of a 4 px grid on average (`SAND_DENSITY`; about 7% of the
+pixels), the same density everywhere, placed by a fixed scramble of their position and the round's
+seed, so every round has new dunes. `SAND = False` leaves the ground out.
+
+It is black on white in the black plane, so the partial refresh draws it like the cat and the
+letters (no red). To keep the frames fast it is drawn once per round (172 ms on the badge; the
+log says `Sand drawn in ... ms`) and its rows are kept as a copy; every frame clears the field and
+copies those rows back in one memory copy (under 1 ms), instead of drawing about 1000 grains
+again.
+
 ### Score boards
 
 At each end of the top banner is a panel: **User A on the left, User B on the right**. Both are
@@ -177,7 +195,7 @@ exists on the partial-refresh path, not in the slideshow fallback.
 
 The pictures are drawn with `#` in the `_CAT_WALK` (four walking poses) and `_CAT_SIT` tables in
 `tetris_tag.py`, which are easy to edit; `CAT_SCALE` (6) is how many screen pixels a `#` is (the
-sitting cat is 114 x 108 px, the walking one 162 x 96), `CAT_STEP_PX` (72) how far it walks each
+sitting cat is 114 x 108 px, the walking one 168 x 102), `CAT_STEP_PX` (72) how far it walks each
 refresh. They are my own pixel art, in the style of black pixel-art cat silhouettes, not a copy of
 any image. A bigger cat would leave fewer than 3 refreshes to press a button.
 
