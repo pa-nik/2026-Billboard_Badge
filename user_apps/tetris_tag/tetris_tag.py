@@ -1,24 +1,26 @@
 """Tetris Tag. Tetris-like pieces fall and stack up to spell a name along the
-bottom edge of the screen, the name blinks, stays up for HOLD_S seconds, then the
-Faberrgen screen comes in line by line and stays up for INFO_HOLD_S seconds, then it is
-built again (or the next name, if NAMES lists more than one).
+bottom edge of the screen, the name blinks, stays up for HOLD_S seconds, then it is
+built again (or the next name, if NAMES lists more than one). A black cat walks in from the
+side at the start of each round and sits just below the banner; one piece at a time falls out
+of its rear, and after each the cat walks over to where the next one goes and sits down
+there before it falls.
 
-User A: turn the left falling piece 90 degrees clockwise
-User B: turn the right falling piece 90 degrees clockwise
+User A or User B: turn the falling piece 90 degrees clockwise (with the cat, one piece
+falls at a time and either button turns it; with CAT = False two fall, A turns the left
+one and B the right one)
 (between names, User A skips to the next name and User B restarts the current one)
 
-A red banner with white Helvetica Bold lettering and the two players' score boards runs
-across the top of the screen, and a red footer across the bottom 25% (www.faberrgen.com);
-the name stands above it.
+A red banner with white Helvetica Bold lettering ("BART 🐾 ТЕТРИС") and the two players' score
+boards runs across the top of the screen. There is no footer on this branch.
 The lettering is an image made on a computer by make_banner.py. Edit NAMES and the
 settings below to make it your own.
 
 The panel's own refresh takes about 30 s, far too slow to animate. On B1 panels with
-lib/epd_partial.py (about 0.65 s a frame) two pieces fall at a time, like a two-player
-Tetris, in partial refreshes: the screen is cleared with one full refresh that also draws
-the red bands, then only the pixels that change are redrawn. Both pieces appear
-at 25% of the screen height turned a random quarter turn and fall without turning.
-User A turns the left piece and User B the right one, 90 degrees clockwise per press.
+lib/epd_partial.py (about 0.65 s a frame) the pieces fall in partial refreshes (two at a
+time, like a two-player Tetris, when CAT is False): the screen is cleared with one full refresh that also draws
+the red bands, then only the pixels that change are redrawn. A piece appears
+turned a random quarter turn (just below the cat, or at 25% of the screen height) and falls
+without turning; each press turns it 90 degrees clockwise.
 Once a piece is the right way up it drops into place on the next refresh. A piece
 nobody has turned starts turning itself when it reaches 50% of the screen height.
 Elsewhere the app falls back to a slideshow, one full refresh per snapshot, showing
@@ -42,7 +44,7 @@ try:  # the partial refresh driver; without it the app falls back to the slidesh
 except ImportError:
     _ep = None
 
-NAMES = ("YOUR NAME",)
+NAMES = ("FELIX",)
 """Shown in turn, forever. Replace "YOUR NAME" with your own, using only the characters
 in FONT below (the letters A to Z and a to z, é, and space), or add more names to the
 tuple to cycle through them. Punctuation needs a 5 x 7 glyph of its own."""
@@ -67,22 +69,24 @@ More frames is smoother, but each one costs a full refresh."""
 MAX_CELL = 16
 """Largest block size in pixels. Names are scaled down to fit the width."""
 
-BOTTOM_MARGIN = 8
+BOTTOM_MARGIN = 75
 """Pixels left clear between the letters and the footer band (or the bottom of the
-screen, with no footer)."""
+screen, with no footer). 75 with no footer: the name sits 15% of the screen height (101 px)
+lower than it did above the 168 px footer."""
 
-NAME_RISE_PCT = 6.55
-"""How far the name is lifted above that position, as a percent of the screen height
-(6.55 is 44 px). The pieces then have that much less to fall."""
+NAME_RISE_PCT = 0
+"""How far the name is lifted above that position, as a percent of the screen height (6.55
+is 44 px). The pieces then have that much less to fall. 0 here: the cat sits high and the
+pieces start below it, so the name stays low to leave them room to fall."""
 
-FOOTER_PCT = 25
+FOOTER_PCT = 0
 """Height of the red footer band across the bottom, as a percent of the screen height.
 It is drawn by the one full refresh when the app is launched and stays on the screen all
-the time; the name lands right above it. 0 for no footer."""
+the time; the name lands right above it. 0 for no footer (none on this branch)."""
 
 FOOTER_IMAGE = "/data/graphics/faberrgen_footer.png"
 """White lettering on red, 960 px wide, made by make_faberrgen.py (it is the same band as
-on the Faberrgen screen). For your own text make one with make_banner.py, e.g.
+on the Faberrgen screen of the main branch). For your own text make one with make_banner.py, e.g.
     python3 make_banner.py --text "web / @socials" --pct 25 --size 78 --out tetris_footer.png
 (78 px is the top banner's lettering size) and point FOOTER_IMAGE at it. If the file is
 missing the footer is a plain red band."""
@@ -112,24 +116,22 @@ HOLD_S = 30
 """Seconds the finished name stays on the screen, after the blinking, before the next
 round starts. User A skips the wait to the next name, User B restarts this one."""
 
-INFO_SCREEN = True
-"""After the finished name has been held, show the Faberrgen screen (three definition
-lines and an emoji line, between the two red bands) before the next round. The images
-come from make_faberrgen.py and must be in /data/graphics on the badge; a missing one is
-skipped."""
+CAT = True
+"""A black pixel-art cat walks in from the nearer side of the screen at the start of each round
+and sits just below the banner, and one piece at a time falls out of its rear. After each
+piece lands the cat walks over to where the next one goes, sits down there, and then that
+piece falls. Needs the partial refresh (on the slideshow fallback there is no cat). With the
+cat on, one piece falls at a time whatever PIECES_AT_ONCE says. False: no cat, the pieces
+appear at SPAWN_PCT."""
 
-INFO_DIR = "/data/graphics/"
-"""Where the Faberrgen images are on the badge."""
+CAT_SCALE = 6
+"""Pixels on the screen for each pixel of the cat (4 was 1.5 times smaller)."""
 
-INFO_FILES = ("faberrgen_row0.png", "faberrgen_row1.png", "faberrgen_row2.png",
-              "faberrgen_emoji1.png", "faberrgen_emoji2.png", "faberrgen_emoji3.png",
-              "faberrgen_emoji4.png", "faberrgen_emoji5.png")
-"""Drawn one per refresh, in this order. The first three are rows 0 to 2 (the lines); the
-rest are all row 3 (the emoji line, one more emoji in each). The rows fill the space
-between the red banner and the red footer, which stay on the screen all the time."""
+CAT_STEP_PX = 72
+"""How far the cat walks in each refresh (about 0.65 s), at most."""
 
-INFO_HOLD_S = 30
-"""Seconds the finished Faberrgen screen stays up before the next round."""
+CAT_GAP_PX = 8
+"""Space between the bottom of the banner and the top of the sitting cat."""
 
 FAST = True
 """Use partial refreshes (lib/epd_partial.py) where the panel and firmware support
@@ -146,7 +148,8 @@ nothing suitable is ready, a piece falls alone."""
 
 SPAWN_PCT = 25
 """Every piece appears at this percent of the screen height, measured from the top.
-25 is the bottom edge of the banner. It is never put inside the banner."""
+25 is the bottom edge of the banner. It is never put inside the banner. (With the cat the
+pieces appear just below it instead.)"""
 
 FALL_PX = 36
 """How far, in pixels, a piece falls in each refresh while it is turning or waiting to be
@@ -250,9 +253,7 @@ _BLINK = 1
 _CLEAR = 2
 _DROP = 3
 _HOLD = 4
-_INFO_CLEAR = 5
-_INFO_STEP = 6
-_INFO_HOLD = 7
+_CAT = 5  # the cat walks in and sits down
 
 _FULL = 1  # what the screen task is asked to do: a normal refresh of the whole panel,
 _PART = 2  # or a partial one of what changed
@@ -572,6 +573,142 @@ def _disc(plane, cx, cy, r, value):
         plane.fill_rect(cx - half, cy + dy, 2 * half + 1, 1, value)
 
 
+_CAT_WALK = (  # four walking poses, facing right; # is a black block (CAT_SCALE px)
+    (
+        "...........................",
+        "..###...............#....#.",
+        ".##.#...............##..##.",
+        ".##.................######.",
+        ".##...............########.",
+        ".##...#####################",
+        ".##########################",
+        ".#########################.",
+        "....####################...",
+        "......#############........",
+        "......##.##......####......",
+        ".....##..##.......###......",
+        ".....##..##.......###......",
+        "....##...##........##......",
+        "....##...##........##......",
+        "...###...###.......####....",
+    ),
+    (
+        "...........................",
+        "..###...............#....#.",
+        ".##.#...............##..##.",
+        ".##.................######.",
+        ".##...............########.",
+        ".##...#####################",
+        ".##########################",
+        ".#########################.",
+        "....####################...",
+        "......#############........",
+        "......##.##......####......",
+        "......##.##......####......",
+        "......##.##......####......",
+        ".....##...##......##.......",
+        ".....##...##......##.......",
+        ".....###..###.....###......",
+    ),
+    (
+        "...........................",
+        "..###...............#....#.",
+        ".##.#...............##..##.",
+        ".##.................######.",
+        ".##...............########.",
+        ".##...#####################",
+        ".##########################",
+        ".#########################.",
+        "....####################...",
+        "......#############........",
+        "......##.##......####......",
+        "......##.##......##.##.....",
+        ".......###......##..##.....",
+        ".......###......##...##....",
+        ".......###.....##....##....",
+        ".......####....###....###..",
+    ),
+    (
+        "...........................",
+        "..###...............#....#.",
+        ".##.#...............##..##.",
+        ".##.................######.",
+        ".##...............########.",
+        ".##...#####################",
+        ".##########################",
+        ".#########################.",
+        "....####################...",
+        "......#############........",
+        ".......####......####......",
+        ".......####......####......",
+        ".......####......####......",
+        ".......####......####......",
+        ".......####......####......",
+        ".......#####.....#####.....",
+    ),
+)
+
+_CAT_SIT = (  # sitting, facing right
+    "..........#....#...",
+    "..........##..##...",
+    ".........########..",
+    ".........#########.",
+    ".........##########",
+    ".........##########",
+    ".........#########.",
+    "........#########..",
+    "........#########..",
+    ".......##########..",
+    "......###########..",
+    ".....############..",
+    "....#############..",
+    "#...#############..",
+    "#..##############..",
+    "#..##############..",
+    "#..###############.",
+    ".#################.",
+)
+_CAT_DROP_GAP = 4  # pixels between the sitting cat and where the piece appears
+_CAT_SIT_RUMP = 5  # the column of its picture where the sitting cat's rear is (the piece falls there)
+_CAT_WALK_RUMP = 4  # and the walking cat's
+_CAT_SNAP_PX = 24  # the cat just shifts, without walking, if the next place is this close
+
+
+def _cat_ground():
+    """The line the cat stands and sits on: the bottom of the sitting cat."""
+    return display_height * BANNER_PCT // 100 + CAT_GAP_PX + len(_CAT_SIT) * CAT_SCALE
+
+
+def _draw_sprite(plane, rows, x, y, scale, value=1):
+    """Draw a sprite (rows of '#' and '.') with its top left at x, y, clipped to the screen."""
+    for gy, row in enumerate(rows):
+        n = len(row)
+        gx = 0
+        while gx < n:
+            if row[gx] != "#":
+                gx += 1
+                continue
+            end = gx
+            while end < n and row[end] == "#":
+                end += 1
+            x0 = max(0, x + gx * scale)
+            x1 = min(display_width, x + end * scale)
+            if x1 > x0:
+                plane.fill_rect(x0, y + gy * scale, x1 - x0, scale, value)
+            gx = end
+
+
+def _draw_cat_at(plane, rows, rump, cx, face):
+    """The cat (a picture and the column of its rear) standing on the ground line with its rear
+    at x = cx, facing right (face 1) or left (-1, the picture turned round)."""
+    if face < 0:
+        # (MicroPython cannot slice with a step, so the row is reversed by hand)
+        rows = ["".join([r[i] for i in range(len(r) - 1, -1, -1)]) for r in rows]
+        rump = len(rows[0]) - 1 - rump
+    _draw_sprite(plane, rows, int(cx - (rump + 0.5) * CAT_SCALE),
+                 _cat_ground() - len(rows) * CAT_SCALE, CAT_SCALE)
+
+
 _HUD_W = 149  # how wide a player's panel is
 _HUD_H = 152
 _PANEL_MARGIN = 6  # of the left panel from the left edge
@@ -717,6 +854,9 @@ class _Plan:
         # Row where every piece appears, and how far sideways a turned piece may reach.
         self.spawn_row = max(self.top_row,
                              (display_height * SPAWN_PCT // 100 + self.cell - 1) // self.cell)
+        if CAT:  # the pieces appear just below the sitting cat
+            self.spawn_row = max(self.top_row,
+                                 (_cat_ground() + _CAT_DROP_GAP + self.cell - 1) // self.cell)
         # Rows a piece falls in each refresh: FALL_PX worth, slowed down (in quarter rows, to no
         # less than one) until a player gets MIN_PRESS_FRAMES refreshes before the auto-turn line.
         # That line is halfway down the screen, but no lower than the last place a piece can
@@ -777,6 +917,11 @@ class _Plan:
         """Columns piece i covers when landed: (first, one past the last)."""
         xs = [x for x, _ in self.pieces[i]]
         return min(xs), max(xs) + 1
+
+    def centre_px(self, i):
+        """The x, in pixels, of the middle of piece i when landed."""
+        a, b = self.span(i)
+        return self.x0 + (a + b) * self.cell // 2
 
     def reach(self, i):
         """The most columns piece i covers in any orientation."""
@@ -921,8 +1066,12 @@ class TetrisTagApp(BaseApp):
         self.film = None  # the black plane a normal refresh is about to draw
         self.need_full = True  # the next name starts with the one full refresh (red bands)
         self.wipe_step = 0
-        self.info_step = 0  # which of INFO_FILES comes in next
-        self.hold_armed = False  # the Faberrgen screen's wait has started
+        self.cat_x = None  # where the cat's rear is (None: not on the screen yet this round)
+        self.cat_face = 1  # which way it looks: 1 right, -1 left
+        self.cat_from = self.cat_goal = 0  # a walk, from where to where
+        self.cat_steps = 0  # in this many refreshes
+        self.cat_k = 0  # and this is the one it is at
+        self.cat_ready = False  # it is sitting where the next piece falls
         self.score = [0, 0]  # left and right player
         self.lines = [0, 0]  # letters finished
         self.glyph_left = []  # pieces still to land in each letter
@@ -952,7 +1101,7 @@ class TetrisTagApp(BaseApp):
                 self.req = None
                 self.pending = False
             self._ensure_task()
-            self.waves = plan.land_waves(max(1, PIECES_AT_ONCE))
+            self.waves = plan.land_waves(1 if CAT else max(1, PIECES_AT_ONCE))
             self.order = [i for wave in self.waves for i in wave]
             self.score = [0, 0]
             self.lines = [0, 0]
@@ -961,6 +1110,8 @@ class TetrisTagApp(BaseApp):
             self.batch = 0
             self.frame = 0
             self.landed = []
+            self.cat_x = None
+            self.cat_ready = False
             self.state = _CLEAR
             print(f"{NAMES[self.word]}: {len(self.order)} pieces in {len(self.waves)} waves, "
                   f"cell {plan.cell}px")
@@ -1122,6 +1273,8 @@ class TetrisTagApp(BaseApp):
         dropped into place solid black (`settled`)."""
         plan = self.plan
         self._new_frame()
+        if CAT:
+            self._draw_cat()
         for i in self.landed:
             plan.draw_piece(display.black, plan.pieces[i])
         for cells in settled:
@@ -1164,6 +1317,7 @@ class TetrisTagApp(BaseApp):
             self.landed.extend(wave)
             self.batch += 1
             self.frame = 0
+            self.cat_ready = False  # the cat walks to the next place
         else:
             self.frame += 1
 
@@ -1181,47 +1335,52 @@ class TetrisTagApp(BaseApp):
         self.hold_ms = time.ticks_ms()
         print(f"Holding {NAMES[self.word]} for {HOLD_S} s")
 
-    def _start_info(self):
-        """The Faberrgen screen: the middle wiped, then the lines come in."""
-        self.state = _INFO_CLEAR
-        self.info_step = 0
-        self.wipe_step = 0
-        print("Faberrgen screen")
+    def _draw_cat(self):
+        """The cat, sitting where it is."""
+        if self.cat_x is not None:
+            _draw_cat_at(display.black, _CAT_SIT, _CAT_SIT_RUMP, self.cat_x, self.cat_face)
 
-    def _info_rows(self):
-        """(top of the first row, row height) of the Faberrgen rows between the two bands."""
-        top = self.banner.height
-        return top, (display_height - top - self.banner.foot) // 4
-
-    def _info_draw(self, step):
-        """Draw strip `step` of INFO_FILES into the framebuffer, on top of what is there."""
-        top, row_h = self._info_rows()
-        row = min(step, 3)
-        try:
-            display.draw_png(INFO_DIR + INFO_FILES[step], top + row * row_h, 0)
-        except Exception as ex:  # missing file, not a palette PNG, ...
-            print("Faberrgen image not drawn:", INFO_FILES[step], ex)
-
-    def _info_next(self):
-        """Bring in the next line or emoji with a partial refresh."""
-        if not self.fast:
-            # No partial refresh: everything at once, with one more full refresh.
-            for step in range(self.info_step, len(INFO_FILES)):
-                self._info_draw(step)
-            self._full()
-            self.info_step = len(INFO_FILES)
-            self._info_hold()
+    def _cat_begin(self):
+        """The cat goes to where the next piece falls: at the start of a round in from the nearer
+        side of the screen, after that from where it sits (a short way it just shifts)."""
+        goal = self.plan.centre_px(self.waves[self.batch][0])
+        if self.cat_x is None:
+            far = int((len(_CAT_WALK[0][0]) - _CAT_WALK_RUMP - 0.5) * CAT_SCALE)  # rear to the far edge
+            start = -far if goal < display_width // 2 else display_width + far
+            print("Cat walks in")
+        elif abs(goal - self.cat_x) < _CAT_SNAP_PX:
+            self.cat_x = goal
+            self.cat_ready = True
+            self._drop_frame()
             return
-        self._info_draw(self.info_step)
-        self._request(_PART)
-        self.info_step += 1
-        if self.info_step >= len(INFO_FILES):
-            self._info_hold()
+        else:
+            start = self.cat_x
+        self.cat_from, self.cat_goal = start, goal
+        self.cat_face = 1 if goal >= start else -1
+        self.cat_steps = max(1, -(-abs(goal - start) // CAT_STEP_PX))
+        self.cat_k = 0
+        self.state = _CAT
+        self._cat_next()
 
-    def _info_hold(self):
-        """The screen is complete. The wait starts once the last refresh has finished."""
-        self.state = _INFO_HOLD
-        self.hold_armed = False
+    def _cat_next(self):
+        """One refresh of the cat walking: a step, in a new pose each time. After the last step one
+        more with the cat sitting down; then the piece falls."""
+        self.cat_k += 1
+        k = self.cat_k
+        self._new_frame()
+        for i in self.landed:
+            self.plan.draw_piece(display.black, self.plan.pieces[i])
+        if k <= self.cat_steps:
+            self.cat_x = self.cat_from + (self.cat_goal - self.cat_from) * k // self.cat_steps
+            _draw_cat_at(display.black, _CAT_WALK[k % 4], _CAT_WALK_RUMP, self.cat_x, self.cat_face)
+        else:
+            self.cat_x = self.cat_goal
+            self._draw_cat()
+            self.cat_ready = True
+            self.state = _DROP
+        self.seen = [False, False]
+        self._draw_hud()
+        self._request(_PART)
 
     def _wipe(self, then):
         """Clear the area between the two red bands with partial refreshes instead of a full
@@ -1279,7 +1438,10 @@ class TetrisTagApp(BaseApp):
             self._start_word(0)
             return
 
-        if self.state == _DROP and self.fast:
+        if self.state == _CAT:
+            UserA.pressed()  # the cat is walking: a press does nothing (and must not skip the name)
+            UserB.pressed()
+        elif self.state == _DROP and self.fast:
             # Presses wait for the next refresh, which turns the piece.
             if UserA.pressed():
                 self.taps[0] += 1
@@ -1321,7 +1483,10 @@ class TetrisTagApp(BaseApp):
                 print("Partial refresh stopped working, using the slideshow")
                 self._start_word(self.word)
             elif self.batch < len(self.waves):
-                self._drop_frame()
+                if CAT and not self.cat_ready:
+                    self._cat_begin()
+                else:
+                    self._drop_frame()
             else:
                 self._start_blink()
         elif self.state == _BUILD:
@@ -1331,21 +1496,9 @@ class TetrisTagApp(BaseApp):
                 self._start_blink()
         elif self.state == _HOLD:
             if time.ticks_diff(time.ticks_ms(), self.hold_ms) >= HOLD_S * 1000:
-                if INFO_SCREEN:
-                    self._start_info()
-                else:
-                    self._start_word(self.word + 1)
-        elif self.state == _INFO_CLEAR:
-            self._wipe(_INFO_STEP)
-        elif self.state == _INFO_STEP:
-            self._info_next()
-        elif self.state == _INFO_HOLD:
-            if not self.hold_armed:
-                self.hold_armed = True
-                self.hold_ms = time.ticks_ms()
-                print(f"Holding the Faberrgen screen for {INFO_HOLD_S} s")
-            elif time.ticks_diff(time.ticks_ms(), self.hold_ms) >= INFO_HOLD_S * 1000:
                 self._start_word(self.word + 1)
+        elif self.state == _CAT:
+            self._cat_next()
         elif BLINK_MODE == "leds":
             self._blink_leds()
         else:

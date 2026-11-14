@@ -14,7 +14,9 @@ then copy the result to the badge:
 
 The text is set in Helvetica Bold. Helvetica has no hammer and sickle, so any
 character it lacks is taken from a fallback font (--symbol-font), scaled to the
-height of the capitals. Only the rendered shapes go into the PNG; no font file is
+height of the capitals. Emoji (such as the paw prints in "BART 🐾 ТЕТРИС") come from Apple Color
+Emoji, which only has colour pictures: their outline is used, as a solid white shape, as tall
+as the capitals. Only the rendered shapes go into the PNG; no font file is
 copied anywhere. The PNG must match BANNER_PCT in tetris_tag.py (25% of the
 960 x 672 screen is 168 px, the default here).
 """
@@ -38,6 +40,7 @@ SYMBOL_FONTS = (  # tried in order; globs allowed
     "/Library/Fonts/Arial Unicode.ttf",
     "/opt/anaconda3/lib/python3*/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf",
 )
+EMOJI_FONT = "/System/Library/Fonts/Apple Color Emoji.ttc"
 SYMBOL_BOLD = 0.03  # thicken fallback glyphs by this fraction of the font size
 
 
@@ -69,6 +72,31 @@ def runs(text, main_has):
     return out
 
 
+def is_emoji(ch):
+    return ord(ch) >= 0x1F000
+
+
+def emoji_mask(ch, height):
+    """The outline of an emoji as an L mask (255 inside) `height` pixels tall. The font has
+    one bitmap size (160), which is drawn and then scaled."""
+    font = ImageFont.truetype(EMOJI_FONT, 160)
+    canvas = Image.new("RGBA", (260, 260), (0, 0, 0, 0))
+    ImageDraw.Draw(canvas).text((30, 30), ch, font=font, embedded_color=True)
+    alpha = canvas.crop(canvas.getbbox()).getchannel("A").point(lambda v: 255 if v > 100 else 0)
+    return alpha.resize((max(1, round(alpha.width * height / alpha.height)), height), Image.LANCZOS)
+
+
+def split_emoji(chunk):
+    """[(is_emoji, string)] runs of a chunk the main font cannot draw."""
+    out = []
+    for ch in chunk:
+        if out and out[-1][0] == is_emoji(ch):
+            out[-1] = (out[-1][0], out[-1][1] + ch)
+        else:
+            out.append((is_emoji(ch), ch))
+    return out
+
+
 def layout(text, size, main_path, main_face, symbol_path, symbol_face, bold=SYMBOL_BOLD):
     """Draw the line big on a scratch canvas; return (image, ink bounding box)."""
     main = ImageFont.truetype(main_path, size, index=face_index(main_path, main_face))
@@ -83,20 +111,32 @@ def layout(text, size, main_path, main_face, symbol_path, symbol_face, bold=SYMB
             draw.text((x, base), chunk, font=main, fill=255, anchor="ls")
             x += int(main.getlength(chunk))
             continue
-        # Fallback glyphs: pick the size whose ink is as tall as the capitals.
-        probe = ImageFont.truetype(symbol_path, size, index=face_index(symbol_path, symbol_face))
-        top, bottom = probe.getbbox(chunk, anchor="ls")[1], probe.getbbox(chunk, anchor="ls")[3]
-        stroke = round(size * bold)  # fallback glyphs are lighter than Helvetica Bold
-        scale = max(1, cap_h - 2 * stroke) / max(1, bottom - top)
-        fallback = ImageFont.truetype(symbol_path, max(2, round(size * scale)),
-                                      index=face_index(symbol_path, symbol_face))
-        # Sit it on the baseline like the letters, centred on the capitals.
-        fb = fallback.getbbox(chunk, anchor="ls")
-        dy = -(cap_h // 2) - (fb[1] + fb[3]) // 2
-        draw.text((x, base + dy), chunk, font=fallback, fill=255, anchor="ls",
-                  stroke_width=stroke, stroke_fill=255)
-        x += int(fallback.getlength(chunk)) + 2 * stroke
+        for emoji, part in split_emoji(chunk):
+            if emoji:
+                for ch in part:  # as tall as the capitals, sitting on the baseline
+                    mask = emoji_mask(ch, cap_h)
+                    canvas.paste(255, (x, base - cap_h), mask)
+                    x += mask.width + round(size * 0.04)
+                continue
+            x = layout_symbols(draw, part, x, base, size, cap_h, symbol_path, symbol_face, bold)
     return canvas, canvas.getbbox(), cap_h
+
+
+def layout_symbols(draw, chunk, x, base, size, cap_h, symbol_path, symbol_face, bold):
+    """Draw characters from the fallback font; returns the new pen position."""
+    # Pick the size whose ink is as tall as the capitals.
+    probe = ImageFont.truetype(symbol_path, size, index=face_index(symbol_path, symbol_face))
+    top, bottom = probe.getbbox(chunk, anchor="ls")[1], probe.getbbox(chunk, anchor="ls")[3]
+    stroke = round(size * bold)  # fallback glyphs are lighter than Helvetica Bold
+    scale = max(1, cap_h - 2 * stroke) / max(1, bottom - top)
+    fallback = ImageFont.truetype(symbol_path, max(2, round(size * scale)),
+                                  index=face_index(symbol_path, symbol_face))
+    # Sit it on the baseline like the letters, centred on the capitals.
+    fb = fallback.getbbox(chunk, anchor="ls")
+    dy = -(cap_h // 2) - (fb[1] + fb[3]) // 2
+    draw.text((x, base + dy), chunk, font=fallback, fill=255, anchor="ls",
+              stroke_width=stroke, stroke_fill=255)
+    return x + int(fallback.getlength(chunk)) + 2 * stroke
 
 
 def fit_size(text, max_w, max_h, args):

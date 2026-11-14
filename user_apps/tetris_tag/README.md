@@ -3,10 +3,12 @@
 Tetris Tag takes inspiration from Tetris to assemble your name on the badge. Use User A and B buttons to play!
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
-the screen, two at a time, and you steer them. The name blinks three times, stays up for
-30 seconds, then the Faberrgen screen comes in (see below) and stays up for 30 seconds, then
-the name is built again, and it loops forever. It ships with the placeholder
-"YOUR NAME"; put your own in `NAMES` (see below).
+the screen, one at a time, and you steer them. The name blinks three times, stays up for
+30 seconds, then the name is built again, and it loops forever. Each round starts with a black
+cat that walks in from the side of the screen and sits down just below the banner; a piece falls
+out of its rear, then the cat walks over to where the next piece goes, sits down there, and the
+next piece falls (see "The cat"). This is the "FELIX" version, with "BART 🐾 ТЕТРИС" in the banner
+and no footer; put your own name in `NAMES` (see below).
 
 Concept by the Soviet people, execution by [pa-nik](https://github.com/pa-nik) & Claude.
 
@@ -29,7 +31,6 @@ mpremote cp firmware/badge/lib/epd_partial.py :lib/epd_partial.py
 mpremote cp firmware/badge/lib/large_png.py :lib/large_png.py
 mpremote cp firmware/badge/data/rendered_luts.py :data/rendered_luts.py
 mpremote cp user_apps/tetris_tag/tetris_banner.png :data/graphics/tetris_banner.png
-mpremote cp user_apps/tetris_tag/faberrgen/*.png :data/graphics/
 mpremote cp user_apps/tetris_tag/tetris_tag.py :apps/tetris_tag.py
 mpremote reset
 ```
@@ -52,7 +53,7 @@ never collide. When one piece is alone (the last of a letter), either button tur
 
 Edit the top of `tetris_tag.py`:
 
-- `NAMES`: what to show, in order. It starts as `("YOUR NAME",)`: replace that with your
+- `NAMES`: what to show, in order. It starts as `("FELIX",)`: replace that with your
   own name, or list several to cycle through them. Only characters in `FONT` can be
   shown: the letters A to Z and a to z, é, the digits 0 to 9, and space. There is no punctuation yet:
   add a glyph to `FONT` for any other character (5 wide, 7 tall, `X` is a block). Long names
@@ -68,39 +69,29 @@ Edit the top of `tetris_tag.py`:
 - `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below. `HOLD_S`: how long the finished name
   stays up after the blinking (30 s).
 - `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
-- `FOOTER_PCT`, `FOOTER_IMAGE`, `BOTTOM_MARGIN`, `NAME_RISE_PCT`: the footer band at the bottom, its
-  image, and where the name sits above it (see Footer).
+- `FOOTER_PCT`, `FOOTER_IMAGE`, `BOTTOM_MARGIN`, `NAME_RISE_PCT`: the footer band at the bottom
+  (0: none on this branch), its image, and where the name sits (see Footer).
 
 ## Footer
 
-A second red band runs across the bottom 25% of the screen, and the name stands above it (see
-"Where the name sits" below). It reads `www.faberrgen.com` (`faberrgen/faberrgen_footer.png`, made
-by `make_faberrgen.py`), in white Helvetica Bold at the same font size as the lettering of the top
-banner (78 px). For your own web address or social handles make
-a band on your computer (this one is the placeholder "web / @socials" in `tetris_footer.png`, at
-the same font size as the lettering of the top banner) and point `FOOTER_IMAGE` at it:
-
-```
-python3 make_banner.py --text "yourname.com" --pct 25 --size 78 --out tetris_footer.png
-mpremote cp tetris_footer.png :data/graphics/tetris_footer.png
-```
-
-(`--text "@you"` for a handle. `--size 78` is the font size of the banner's lettering, which is
-fitted between the score boards; leave it out to get the largest size that fits instead.) If the
-image is not on the badge the footer is a plain red band; `FOOTER_PCT = 0` removes the footer.
+There is no footer on this branch: `FOOTER_PCT = 0`, so the whole screen below the banner is
+white and the name has the room to itself. (`FOOTER_PCT = 25` brings back a red band across the
+bottom 25% from `FOOTER_IMAGE`, a white-on-red picture made with `make_banner.py`, for example
+`python3 make_banner.py --text "yourname.com" --pct 25 --size 72 --out footer.png`, copied to the
+badge; the name then stands `BOTTOM_MARGIN` above it.)
 
 ### Where the name sits
 
-The name is lifted `NAME_RISE_PCT` (6.55% of the screen height, 44 px) above the position just
-over the footer (`BOTTOM_MARGIN`, 8 px), so it stands clear of the footer. The pieces have that
-much less distance to fall and turn in, and a piece has to be the right way up before it reaches
-the name, so the line where an unturned piece starts turning itself comes earlier (about 38% of
-the screen height for both block sizes instead of 50%) and the time a player has to press a
-button before that line is limited. To keep it playable the fall slows down when needed, in
-quarter rows down to one row a refresh (`MIN_PRESS_FRAMES`, 3 refreshes, about 2 s): 2 rows a
-refresh for 12 px blocks (3 refreshes to press), 1 row for 16 px blocks (4 refreshes). A larger
-`NAME_RISE_PCT` lifts the name further and leaves less time; 12.5 gives the 16 px blocks of the
-placeholder name only 2 refreshes.
+With no footer the name sits `BOTTOM_MARGIN` above the bottom of the screen: 75 px, which puts it
+15% of the screen height (101 px) lower than it was above the old 168 px footer (letters from
+y 485 to 597 of 672 for the 16 px blocks of "FELIX"). The cat sits high, just under the banner, and
+the pieces come out below it (at y 293), so they have about 190 px to fall and turn in. A piece
+has to be the right way up before it reaches the name, so the line where an unturned piece starts
+turning itself (`AUTO_TURN_PCT`, row 21 = 336 px) is as high as needs be, and the fall slows
+down when needed, in quarter rows down to one row a refresh, so that a player gets at least
+`MIN_PRESS_FRAMES` (3) refreshes, about 2 s, to turn a piece: for "FELIX" the piece falls one
+row (16 px) a refresh and there are 3 refreshes to press. `NAME_RISE_PCT` lifts the name and
+leaves less time.
 
 ### Score boards
 
@@ -138,42 +129,39 @@ just as well as a white one, because the box is not red (the full refresh leaves
 partial refresh only has to switch its pixels between black and white. Only those boxes are ever
 changed after launch, so the red is never touched.
 
-## The Faberrgen screen
+## The cat
 
-After the finished name has been held, a second screen comes in before the next round:
-"Fab = fabricate", "err = (make) error(s)" and "gén = generate" appear one at a time, then
-the emoji line 🏭 🥚⚙️🐣 🐥 one emoji at a time. It sits between the same two red bands as the
-game (the top banner with the score boards, and the footer), so no full refresh is needed to
-get to it. The middle is wiped with two partial refreshes first (see "Partial refresh"). It stays
-up for `INFO_HOLD_S` seconds (30), then the name is built again. `INFO_SCREEN = False` turns it
-off. A press of User A or B skips it.
+At the start of each round (after the wipe, or after the one full refresh when the app is
+launched) a black cat walks in from the nearer side of the screen to the place where the first
+piece will land, a step and a new pose each refresh, and sits down just below the banner (its top
+is `CAT_GAP_PX`, 8 px, under it). Then **one piece** falls out of its rear, straight down to its
+place in the name. When it has landed the cat gets up and walks over to the place where the next
+piece goes, sits down there, and that piece falls, and so on until the name is built. The cat
+faces the way it walked, so it turns round when the next place is to its left. It stays where it
+sat for the last piece while the name is held, and is wiped with the rest of the field before the
+next round, when it walks in again.
 
-The emoji are black: a partial refresh cannot make red, so the screen never needs a full refresh.
+Because only one piece falls, either button (User A or B) turns it; the points go to whoever
+pressed last. While the cat is walking the buttons do nothing (and do not skip the name).
 
-The screen is nine images in `faberrgen/` (the three lines, the five emoji steps and the
-footer), made on your computer by `make_faberrgen.py`
-(`pip install pillow fonttools`, then `python3 make_faberrgen.py --out faberrgen`; text is
-Helvetica Bold and the emoji are Apple Color Emoji, from macOS). Each line and each emoji is a
-partial refresh of about 0.65 s. The emoji are dithered black and white (`--style threshold`
-makes solid shapes). A missing image is skipped (and printed over serial).
+The cat is black on white, drawn into the black plane between the red banner and the bottom of
+the screen, so it is just more pixels for the partial refresh (the red is never touched, and
+nothing has to be installed: the pictures are in `tetris_tag.py`). `CAT = False` leaves it out
+and the pieces appear at `SPAWN_PCT`, two at a time, as in the other versions. The cat only
+exists on the partial-refresh path, not in the slideshow fallback.
 
-For editing, `faberrgen/design/faberrgen_screen.psd` is a layered Photoshop file of the whole
-screen (PhotoCraft, Photoshop, Krita and GIMP open it) at the badge's size and position
-(960 x 672), with a flattened `faberrgen_screen_preview.png` beside it. Layers: the top banner
-(red band, the title, and the two score boards and the timer exactly as the app draws them, with a
-sample game in progress: lettering and boxes, numbers and next pieces, timer box and digits), the
-three definition columns, the five emoji and the footer. The title, the definitions and the footer
-are live text layers (Helvetica Bold, the title's hammer and sickle in Apple Symbols) that also
-carry their pixels, so an editor that does not read text layers shows the same picture. The
-score boards use the badge's own block letters, which are not a font, so they are pixel layers, and
-so are the emoji. `make_faberrgen_psd.py` (`pip install pillow fonttools psd-tools`; it uses
-`make_faberrgen.py`, which runs the app's own score board code, and `psd_text.py`, which writes the
-text layers) builds the file. The file is a reference: the badge images still come from
-`make_faberrgen.py`, so an edit made only in the layered file does not reach the badge.
+The pictures are drawn with `#` in the `_CAT_WALK` (four walking poses) and `_CAT_SIT` tables in
+`tetris_tag.py`, which are easy to edit; `CAT_SCALE` (6) is how many screen pixels a `#` is (the
+sitting cat is 114 x 108 px, the walking one 162 x 96), `CAT_STEP_PX` (72) how far it walks each
+refresh. They are my own pixel art, in the style of black pixel-art cat silhouettes, not a copy of
+any image. A bigger cat would leave fewer than 3 refreshes to press a button.
+
+The files `faberrgen/`, `make_faberrgen.py`, `make_faberrgen_psd.py` and `psd_text.py` belong to
+the Faberrgen screen of the main branch, which this branch does not show; they are not used here.
 
 ## Banner
 
-A red banner runs across the top 25% of the screen, with "ТЕТРИС ☭ TAG" in white
+A red banner runs across the top 25% of the screen, with "BART 🐾 ТЕТРИС" in white
 Helvetica Bold centred in it, low in the band under the timer and between the two score boards
 (see Score boards), so the lettering is smaller than the band would allow. Pieces fall in the
 space below it.
@@ -184,7 +172,7 @@ has no Helvetica, and its built-in font has neither Cyrillic nor the hammer and 
 
 ```
 pip install pillow fonttools
-python3 make_banner.py --pct 25 --margin 190 --height-fraction 0.42 --drop 18   # tetris_banner.png
+python3 make_banner.py --text "BART 🐾 ТЕТРИС" --pct 25 --margin 190 --height-fraction 0.42 --drop 18   # tetris_banner.png (72 px letters)
 python3 make_banner.py --text "HELLO" --pct 25 --margin 190 --height-fraction 0.42 --drop 18
 mpremote cp tetris_banner.png :data/graphics/tetris_banner.png
 ```
@@ -192,13 +180,15 @@ mpremote cp tetris_banner.png :data/graphics/tetris_banner.png
 It sets the text in the Helvetica Bold that ships with macOS, which has the Cyrillic
 and Latin letters. Helvetica has no hammer and sickle, so that one glyph comes from a
 fallback font (Apple Symbols by default, thickened a little to match the bold letters;
-`--symbol-font` picks another). Only the rendered shapes end up in the PNG, no font file.
+`--symbol-font` picks another). Emoji, such as the paw prints, come from Apple Color Emoji
+(colour pictures only, so their outline is used, as a white shape as tall as the capitals).
+Only the rendered shapes end up in the PNG, no font file.
 `--margin 190` keeps the lettering between the score boards, `--drop 18` moves it down under
-the timer, and `--size N` forces a font size (the footer uses the banner's). `BANNER_PCT` in
+the timer, and `--size N` forces a font size. `BANNER_PCT` in
 `tetris_tag.py` and `--pct` must agree (25% is 168 px). If the image
 is not on the badge, the banner is a plain red band.
 
-The panel can only make red with a full refresh, so the banner and the footer are drawn once, by
+The panel can only make red with a full refresh, so the banner is drawn once, by
 the one full refresh when the app is launched (about 36 s, the first LED blinks red), and the partial
 refreshes then leave it untouched.
 
@@ -215,7 +205,7 @@ the pixels that changed, in about 0.65 s a frame (measured on a badge: median 62
    (`PartialEPD.start()` would flash the panel white first, which would also wipe the red
    bands, so the app has its own `start_keep`). The partial pulls only touch the pixels around
    what changed, so the bands are not driven.
-2. The pieces then fall two at a time (see How to play). A fall is one refresh to show the
+2. The pieces then fall (one at a time with the cat, see The cat). A fall is one refresh to show the
    pieces, a few more while they fall and turn, one to drop each into place as an outline and one
    more to turn it solid black. A square,
    which looks the same turned, is never turned and drops straight away.
@@ -237,9 +227,10 @@ on a partial refresh: it is black and white by design and cannot make a good red
 panel. The red bands are unaffected: they are not driven.
 
 Speed. Each refresh takes about 0.65 s, which is the driver's floor, so the length of a pass
-depends on how many refreshes it needs. A pass of "YOUR NAME" is 37 pieces in about 20 waves
-and, in simulation, about 150 refreshes if nobody presses a button (about 100 s) and fewer if you
-turn the pieces: a piece you turn right way up early drops sooner. The app prints `refresh ms:`
+depends on how many refreshes it needs. A round of "FELIX" is 19 pieces, one after the other, each
+with a walk of the cat to its place (up to about 13 refreshes the first time, usually a few) and
+a fall of up to 12 refreshes: in simulation 95 to 120 s from the wipe to the finished name with
+some button presses (a piece you turn right way up early drops sooner). The app prints `refresh ms:`
 over serial after every frame, so you can see the real times.
 
 If the badge is not a B1 panel, or the firmware does not have `epd_partial.py`, or the partial
@@ -254,14 +245,12 @@ half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 (name, blank, name...), but each step is at least one drive step, so it is much slower.
 
 When the blinking is over the finished name stays on the screen, untouched, for `HOLD_S`
-seconds (30), then the Faberrgen screen comes in (`INFO_HOLD_S`, 30 s), then the next round
-starts with a partial wipe. User A skips the wait to the next name and User B restarts the
+seconds (30), then the next round starts with a partial wipe and the cat walks in again. User A skips the wait to the next name and User B restarts the
 current one right away.
 
 ## Installing
 
-The commands at the top copy the app, the banner image, the nine Faberrgen images (the footer
-and the Faberrgen screen) and the display files it needs.
+The commands at the top copy the app, the banner image and the display files it needs.
 The app needs the newer display driver on the badge as well as the app itself. Badges that
 shipped with older firmware are missing `rendered_luts.py`, which the partial refresh uses, and
 an updated `epd.py` (it has the display lock) and `large_png.py`, which `epd_partial.py` relies on. `mpremote ls :lib :data` shows
