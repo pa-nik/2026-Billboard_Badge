@@ -5,12 +5,13 @@ side at the start of each round and sits just below the banner; one piece at a t
 of its rear, and after each the cat walks over to where the next one goes and sits down
 there before it falls.
 
-User A or User B: turn the falling piece 90 degrees clockwise (with the cat, one piece
-falls at a time and either button turns it; with CAT = False two fall, A turns the left
-one and B the right one)
-(between names, User A skips to the next name and User B restarts the current one)
+User A: select the next name of the list in the left score panel (the round starts again,
+        with the cat building it)
+User B: turn the falling piece 90 degrees clockwise (one piece falls at a time)
+(with NAME_MENU = False: two pieces fall, A turns the left one and B the right one, and
+between names A skips to the next name and B restarts the current one)
 
-A red banner with white Helvetica Bold lettering ("BART 🐾 ТЕТРИС") and the two players' score
+A red banner with white Helvetica Bold lettering ("🐾 BARTRIS 🐾") and the two players' score
 boards runs across the top of the screen. There is no footer on this branch.
 The lettering is an image made on a computer by make_banner.py. Edit NAMES and the
 settings below to make it your own.
@@ -44,10 +45,20 @@ try:  # the partial refresh driver; without it the app falls back to the slidesh
 except ImportError:
     _ep = None
 
-NAMES = ("FELIX",)
-"""Shown in turn, forever. Replace "YOUR NAME" with your own, using only the characters
-in FONT below (the letters A to Z and a to z, é, and space), or add more names to the
-tuple to cycle through them. Punctuation needs a 5 x 7 glyph of its own."""
+NAMES = ("FELIX", "SONYA", "IRINA")
+"""The names to build. With NAME_MENU (below) the first three are listed in the left score
+panel and User A picks one; without it they are shown in turn, forever. Use only the
+characters in FONT below (the letters A to Z and a to z, é, and space). Punctuation needs a
+5 x 7 glyph of its own."""
+
+NAME_MENU = True
+"""List the names in NAMES (the first three) in the left score panel, the one for User A, in
+place of its score, and use the buttons differently: User A selects the next name (the round
+starts again with the cat building that name) and User B turns the falling piece. One piece
+falls at a time, all the points go to the right panel (User B's), and the same name is built
+again after each hold instead of moving on to the next. The selected name is white, the others
+black. The right panel shows SCORE and NEXT (no LINES). False: two score panels with SCORE,
+LINES and NEXT, and the buttons turn the pieces, as in the other versions."""
 
 BANNER_IMAGE = "/data/graphics/tetris_banner.png"
 """White lettering on red, 960 px wide, made on a computer by make_banner.py and
@@ -66,13 +77,13 @@ TARGET_FRAMES = 8
 """Roughly how many e-paper refreshes it takes to build one name.
 More frames is smoother, but each one costs a full refresh."""
 
-MAX_CELL = 16
-"""Largest block size in pixels. Names are scaled down to fit the width."""
+MAX_CELL = 20
+"""Largest block size in pixels (20 is 25% more than 16). Names are scaled down to fit the width."""
 
-BOTTOM_MARGIN = 75
+BOTTOM_MARGIN = 72
 """Pixels left clear between the letters and the footer band (or the bottom of the
-screen, with no footer). 75 with no footer: the name sits 15% of the screen height (101 px)
-lower than it did above the 168 px footer."""
+screen, with no footer). 72 with no footer: the name sits 15% of the screen height (about 100 px)
+lower than it did above the 168 px footer; the larger blocks need this room."""
 
 NAME_RISE_PCT = 0
 """How far the name is lifted above that position, as a percent of the screen height (6.55
@@ -138,8 +149,8 @@ FAST = True
 them. False forces the slideshow."""
 
 PIECES_AT_ONCE = 2
-"""Pieces falling at the same time: 1 or 2. With 2, User A turns the left one and User
-B the right one (with 1, either button turns it). Two pieces only fall together if
+"""Pieces falling at the same time: 1 or 2 (always 1 with the cat or the NAME_MENU). With 2,
+User A turns the left one and User B the right one (with 1, either button turns it). Two pieces only fall together if
 they land in separate columns, and each stays on its own side of the screen while it
 is in the air. They are chosen far apart: a name of two or more words gets the left piece
 from its first part (the first word, or the words left of the middle) and the right piece
@@ -163,7 +174,7 @@ MIN_PRESS_FRAMES = 3
 a piece before it starts turning itself (a short play field leaves little time). It never
 falls less than one row a refresh."""
 
-AUTO_TURN_PCT = 50
+AUTO_TURN_PCT = 55
 """A piece that is still not the right way up turns itself, 90 degrees a refresh by the
 shorter way round, once it reaches this percent of the screen height. Buttons only turn
 a piece above this line. The line is never lower than the pieces need to finish turning
@@ -484,8 +495,8 @@ class _Flier:
         self.way = random.choice((1, -1))  # which way to turn when both ways are as short
         self.rowf = float(plan.spawn_row)  # a float: the fall can be a fraction of a row
         self.row = plan.spawn_row
-        self.arrived = False  # at its place, still an outline
-        self.landed = False  # and solid black, one refresh later
+        self.arrived = False  # at its place, still solid black
+        self.landed = False  # and white with a black border, one refresh later
         self.touched = False  # its player turned it
         self.auto = False  # it had to turn itself
         self.cells = self._place()
@@ -514,9 +525,9 @@ class _Flier:
         return 1 if cw < ccw else -1
 
     def step(self, turns, auto_row):
-        """Move on one refresh. A piece that is the right way up drops into place and stays an
-        outline for one refresh (arrived), then turns solid black (landed); otherwise it falls
-        plan.fall_rows, turned by the player's presses if it is still above auto_row, and by
+        """Move on one refresh. A piece that is the right way up drops into place and stays
+        solid black for one refresh (arrived), then turns white with a black border (landed);
+        otherwise it falls plan.fall_rows, turned by the player's presses if it is still above auto_row, and by
         itself once it has fallen to auto_row."""
         if self.landed:
             return
@@ -657,16 +668,16 @@ _CAT_SIT = (  # sitting, facing right
     ".........##########",
     ".........#########.",
     "........#########..",
-    "........#########..",
-    ".......##########..",
-    "......###########..",
-    ".....############..",
-    "....#############..",
-    "#...#############..",
-    "#..##############..",
-    "#..##############..",
-    "#..###############.",
-    ".#################.",
+    ".###....#########..",
+    "##.#...##########..",
+    "##....###########..",
+    "##...############..",
+    "##..#############..",
+    "##..#############..",
+    "##.##############..",
+    "##.##############..",
+    "##.###############.",
+    "##################.",
 )
 _CAT_DROP_GAP = 4  # pixels between the sitting cat and where the piece appears
 _CAT_SIT_RUMP = 5  # the column of its picture where the sitting cat's rear is (the piece falls there)
@@ -717,14 +728,31 @@ _RIGHT_PANEL_SHIFT = 12  # the right panel sits this much further in from the ri
 _TIMER_W = 140  # the box of the timer (black, with white digits)
 _TIMER_H = 42
 _TIMER_CELL = 4.5  # block size of the timer digits: 50% larger than the scores' 3
-# Where the SCORE/LINES column and the NEXT/USER column start inside a panel. The left panel
-# (User A) has NEXT/USER first; the right panel (User B) has SCORE/LINES first. 19 px apart.
+# Where the SCORE/LINES column and the NEXT/button column start inside a panel. The left panel
+# (User A) has NEXT/button first; the right panel (User B) has SCORE/LINES first. 19 px apart.
 _SCORE_DX = (69, 8)
 _NEXT_DX = (8, 107)
 _BTN_R = 8  # radius of the button circles beside the big A or B
 _DOT_R = 4  # radius of the black dot shown while the button is down (9 px across, was 7)
 _BTN_DX = (8, 36)  # where their centres are in the column: left of the A, right of the B
 _LETTER_DX = (21, 0)  # and where the A or B itself starts
+_BTN_UP = 80  # with the name menu the A and B button groups sit this much higher, near the top edge
+_MENU_DX = 71  # the labels of the names in the left panel: where the first starts inside the panel,
+_MENU_DY = 26  # how far down,
+_MENU_GAP = 5  # the space between two labels,
+_MENU_PAD = 5  # the space round the letters inside a label,
+_MENU_CELL = 2.8  # the block size of the letters (smaller if a name would be wider than
+_MENU_MAX_W = 105  # this many pixels)
+
+
+def _text_w(s, cell):
+    """The width in pixels of the string drawn by _text."""
+    w = 0
+    for ch in s:
+        rows = FONT.get(ch)
+        if rows is not None:
+            w += (len(rows[0]) + 1) * cell
+    return int(w - cell + 0.5)
 
 
 def _clock(seconds):
@@ -736,22 +764,48 @@ class _Hud:
     """The score boards in the top banner: a panel for each player at its end and a timer
     at the top centre. Red can only be drawn by the full refresh, so whatever changes has
     to sit on white or black: the panels are the red band with white lettering, the numbers
-    and the next piece are black in small white boxes and the timer is white on black. Partial refreshes change only those
-    boxes."""
+    and the next piece are black in small white boxes and the timer is white on black. Partial
+    refreshes change only those boxes. The names of the menu (NAME_MENU) are in boxes too, a
+    label for each: the selected one white with black letters, the others black with white
+    letters. (A name cannot be white on the red and become black on white when it is selected:
+    the red under a white label could never come back.)"""
 
     def __init__(self, top):
         self.xs = (_PANEL_MARGIN, display_width - _PANEL_MARGIN - _HUD_W - _RIGHT_PANEL_SHIFT)
         self.y = top + 8
         self.tx = (display_width - _TIMER_W) // 2
         self.ty = top + 6
+        self.by = self.y - (_BTN_UP if NAME_MENU else 0)  # the y the button groups are measured from
+        self.menu = []  # the labels of the names listed in the left panel: (name, x, y)
+        self.menu_cell = _MENU_CELL
+        self.menu_w = self.menu_h = 0
+        if NAME_MENU:
+            names = NAMES[:3]
+            widest = 0
+            for name in names:
+                while self.menu_cell > 2 and _text_w(name, self.menu_cell) > _MENU_MAX_W:
+                    self.menu_cell -= 0.5
+            for name in names:
+                widest = max(widest, _text_w(name, self.menu_cell))
+            self.menu_w = widest + 2 * _MENU_PAD
+            self.menu_h = int(GLYPH_ROWS * self.menu_cell + 0.5) + 2 * _MENU_PAD
+            for n, name in enumerate(names):
+                self.menu.append((name, self.xs[0] + _MENU_DX, self.y + _MENU_DY + n * (self.menu_h + _MENU_GAP)))
 
     def boxes(self):
         """The white boxes that change, as (x, y, width, height)."""
         out = []
         for side in (0, 1):
+            if side == 0 and NAME_MENU:
+                continue  # the left panel is the list of names
             x, sx, nx = self.xs[side], _SCORE_DX[side], _NEXT_DX[side]
+            if NAME_MENU:  # SCORE, and NEXT in place of LINES
+                out += [(x + sx, self.y + 28, 80, 29), (x + sx, self.y + 82, 42, 42)]
+                continue
             out += [(x + sx, self.y + 28, 80, 29), (x + sx, self.y + 82, 44, 29),
                     (x + nx, self.y + 28, 42, 42)]
+        for name, mx, my in self.menu:
+            out.append((mx, my, self.menu_w, self.menu_h))
         out.append((self.tx, self.ty, _TIMER_W, _TIMER_H))
         return out
 
@@ -761,7 +815,7 @@ class _Hud:
         out = self.boxes()
         for side in (0, 1):
             cx = self.xs[side] + _NEXT_DX[side] + _BTN_DX[side]
-            out.append((cx - _BTN_R, self.y + 131 - _BTN_R, 2 * _BTN_R + 1, 2 * _BTN_R + 1))
+            out.append((cx - _BTN_R, self.by + 131 - _BTN_R, 2 * _BTN_R + 1, 2 * _BTN_R + 1))
         return out
 
     def draw_static(self):
@@ -769,37 +823,54 @@ class _Hud:
         red = display.red
         for side in (0, 1):
             x, y, sx, nx = self.xs[side], self.y, _SCORE_DX[side], _NEXT_DX[side]
-            _text(red, "SCORE", x + sx + 2, y + 10, 2, 0)
-            _text(red, "LINES", x + sx + 2, y + 64, 2, 0)
-            _text(red, "NEXT", x + nx, y + 10, 2, 0)
-            _text(red, "USER", x + nx, y + 84, 2, 0)
-            _text(red, "AB"[side], x + nx + _LETTER_DX[side], y + 104, 5, 0)
+            if NAME_MENU:
+                if side == 1:
+                    _text(red, "SCORE", x + sx + 2, y + 10, 2, 0)
+                    _text(red, "NEXT", x + sx + 2, y + 64, 2, 0)  # where LINES was
+            else:
+                _text(red, "SCORE", x + sx + 2, y + 10, 2, 0)
+                _text(red, "LINES", x + sx + 2, y + 64, 2, 0)
+                _text(red, "NEXT", x + nx, y + 10, 2, 0)
+            by = self.by
+            _text(red, "AB"[side], x + nx + _LETTER_DX[side], by + 104, 5, 0)
             # The badge's two buttons on that side, one above the other: the menu button
             # (an outline) and the user button (filled).
             cx = x + nx + _BTN_DX[side]
-            _disc(red, cx, y + 112, _BTN_R, 0)
-            _disc(red, cx, y + 112, _BTN_R - 2, 1)
-            _disc(red, cx, y + 131, _BTN_R, 0)
+            _disc(red, cx, by + 112, _BTN_R, 0)
+            _disc(red, cx, by + 112, _BTN_R - 2, 1)
+            _disc(red, cx, by + 131, _BTN_R, 0)
         for wx, wy, ww, wh in self.boxes():
             red.fill_rect(wx, wy, ww, wh, 0)
 
-    def draw_values(self, score, lines, nexts, seconds, pressed=(False, False)):
-        """The numbers and the next pieces: cleared and drawn again on each frame."""
+    def draw_values(self, score, lines, nexts, seconds, pressed=(False, False), selected=0):
+        """The numbers and the next pieces: cleared and drawn again on each frame. The menu
+        names too: the selected one black on a white label, the others white on a black label."""
         black = display.black
+        for n, (name, mx, my) in enumerate(self.menu):
+            black.fill_rect(mx, my, self.menu_w, self.menu_h, 0 if n == selected else 1)
+            _text(black, name, mx + _MENU_PAD, my + _MENU_PAD, self.menu_cell, 1 if n == selected else 0)
         for side in (0, 1):
             x, y, sx, nx = self.xs[side], self.y, _SCORE_DX[side], _NEXT_DX[side]
-            black.fill_rect(x + sx, y + 28, 80, 29, 0)
-            _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, 3)
-            black.fill_rect(x + sx, y + 82, 44, 29, 0)
-            _text(black, "%02d" % min(lines[side], 99), x + sx + 4, y + 86, 3)
-            black.fill_rect(x + nx, y + 28, 42, 42, 0)
-            for cx, cy in nexts[side] or ():
-                black.fill_rect(x + nx + 3 + cx * 9, y + 31 + cy * 9, 8, 8, 1)
+            if NAME_MENU:
+                if side == 1:  # SCORE, and the next piece in place of LINES
+                    black.fill_rect(x + sx, y + 28, 80, 29, 0)
+                    _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, 3)
+                    black.fill_rect(x + sx, y + 82, 42, 42, 0)
+                    for cx, cy in nexts[side] or ():
+                        black.fill_rect(x + sx + 3 + cx * 9, y + 85 + cy * 9, 8, 8, 1)
+            else:
+                black.fill_rect(x + sx, y + 28, 80, 29, 0)
+                _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, 3)
+                black.fill_rect(x + sx, y + 82, 44, 29, 0)
+                _text(black, "%02d" % min(lines[side], 99), x + sx + 4, y + 86, 3)
+                black.fill_rect(x + nx, y + 28, 42, 42, 0)
+                for cx, cy in nexts[side] or ():
+                    black.fill_rect(x + nx + 3 + cx * 9, y + 31 + cy * 9, 8, 8, 1)
             # A black dot in the middle of the filled circle while the button is down.
             bx = x + nx + _BTN_DX[side]
-            black.fill_rect(bx - _BTN_R, y + 131 - _BTN_R, 2 * _BTN_R + 1, 2 * _BTN_R + 1, 0)
+            black.fill_rect(bx - _BTN_R, self.by + 131 - _BTN_R, 2 * _BTN_R + 1, 2 * _BTN_R + 1, 0)
             if pressed[side]:
-                _disc(black, bx, y + 131, _DOT_R, 1)
+                _disc(black, bx, self.by + 131, _DOT_R, 1)
         black.fill_rect(self.tx, self.ty, _TIMER_W, _TIMER_H, 1)  # a black box, white digits
         _text(black, _clock(seconds), self.tx + 7, self.ty + 5, _TIMER_CELL, 0)
 
@@ -997,7 +1068,7 @@ class _Plan:
             plane.fill_rect(self.x0 + x * self.cell, y * self.cell + self.y_off, size, size, 1)
 
     def draw_hollow(self, plane, cells):
-        """Blocks as a black border round white: a piece on its way down."""
+        """Blocks as a black border round white: a piece that has landed."""
         size = self.cell - self.gap
         border = 2 if size >= 8 else 1
         for x, y in cells:
@@ -1101,7 +1172,7 @@ class TetrisTagApp(BaseApp):
                 self.req = None
                 self.pending = False
             self._ensure_task()
-            self.waves = plan.land_waves(1 if CAT else max(1, PIECES_AT_ONCE))
+            self.waves = plan.land_waves(1 if (CAT or NAME_MENU) else max(1, PIECES_AT_ONCE))
             self.order = [i for wave in self.waves for i in wave]
             self.score = [0, 0]
             self.lines = [0, 0]
@@ -1245,8 +1316,13 @@ class TetrisTagApp(BaseApp):
         upcoming = waves[self.batch + 1] if self.batch + 1 < len(waves) else ()
         nexts = []
         for side in (0, 1):
-            if side < len(upcoming):
-                cells = self.plan.pieces[upcoming[side]]
+            # One piece at a time with the menu: the next one is shown on the right panel,
+            # which keeps the score. Otherwise each panel shows the next piece of its side.
+            n = upcoming[0] if (NAME_MENU and side == 1 and upcoming) else None
+            if not NAME_MENU and side < len(upcoming):
+                n = upcoming[side]
+            if n is not None:
+                cells = self.plan.pieces[n]
                 left = min(x for x, _ in cells)
                 top = min(y for _, y in cells)
                 nexts.append([(x - left, y - top) for x, y in cells])
@@ -1254,7 +1330,7 @@ class TetrisTagApp(BaseApp):
                 nexts.append(None)
         pressed = (self.seen[0] or bool(getattr(UserA, "value", False)),
                    self.seen[1] or bool(getattr(UserB, "value", False)))
-        hud.draw_values(self.score, self.lines, nexts, seconds, pressed)
+        hud.draw_values(self.score, self.lines, nexts, seconds, pressed, self.word)
 
     def _credit(self, flier, side):
         """A piece has landed: points to the player at `side`, and a line if it finished
@@ -1268,19 +1344,19 @@ class TetrisTagApp(BaseApp):
         self.score[side] += points
 
     def _show_fast(self, moving, settled=()):
-        """Partial refresh: landed pieces in solid black, the ones in the air as a black
-        border round white (`moving`, a list of cell lists), and the ones that have just
-        dropped into place solid black (`settled`)."""
+        """Partial refresh: the pieces in the air and the one that has just dropped into place
+        (`moving`, a list of cell lists) in solid black, the ones that have landed (`settled`,
+        just now, and `self.landed`) as a black border round white."""
         plan = self.plan
         self._new_frame()
         if CAT:
             self._draw_cat()
         for i in self.landed:
-            plan.draw_piece(display.black, plan.pieces[i])
+            plan.draw_hollow(display.black, plan.pieces[i])
         for cells in settled:
-            plan.draw_cells(display.black, cells)
-        for cells in moving:
             plan.draw_hollow(display.black, cells)
+        for cells in moving:
+            plan.draw_cells(display.black, cells)
         self._draw_hud()
         self._request(_PART)
 
@@ -1289,8 +1365,8 @@ class TetrisTagApp(BaseApp):
         the spawn height, turned a random way. After that each piece that is not yet the
         right way up falls a few rows, turned by its player if they pressed a button,
         or by itself once it is low enough. A piece that is the right way up drops into
-        place, still an outline, and turns solid black one refresh later; the wave is over
-        when every piece in it has."""
+        place, still solid black, and turns white with a black border one refresh later; the
+        wave is over when every piece in it has."""
         wave = self.waves[self.batch]
         self.seen = [self.taps[0] > 0, self.taps[1] > 0]  # shown on the buttons drawn at the score boards
         if not self.run_start:
@@ -1303,13 +1379,13 @@ class TetrisTagApp(BaseApp):
             auto_row = self.plan.auto_row
             for f in self.fliers:
                 if len(self.fliers) == 1:
-                    turns = self.taps[0] + self.taps[1]
+                    turns = self.taps[1] if NAME_MENU else self.taps[0] + self.taps[1]
                 else:
                     turns = self.taps[f.side]
                 was = f.landed
                 f.step(turns % 4, auto_row)
                 if f.landed and not was:
-                    self._credit(f, f.side if len(self.fliers) > 1 else self.last_side)
+                    self._credit(f, 1 if NAME_MENU else (f.side if len(self.fliers) > 1 else self.last_side))
             self.taps = [0, 0]
         self._show_fast([f.cells for f in self.fliers if not f.landed],
                         [f.cells for f in self.fliers if f.landed])
@@ -1369,7 +1445,7 @@ class TetrisTagApp(BaseApp):
         k = self.cat_k
         self._new_frame()
         for i in self.landed:
-            self.plan.draw_piece(display.black, self.plan.pieces[i])
+            self.plan.draw_hollow(display.black, self.plan.pieces[i])
         if k <= self.cat_steps:
             self.cat_x = self.cat_from + (self.cat_goal - self.cat_from) * k // self.cat_steps
             _draw_cat_at(display.black, _CAT_WALK[k % 4], _CAT_WALK_RUMP, self.cat_x, self.cat_face)
@@ -1395,6 +1471,7 @@ class TetrisTagApp(BaseApp):
             self._new_frame()  # white between the bands
             self.wipe_step = 0
             self.state = then
+        self._draw_hud()  # a new name shows as selected at once
         self._request(_PART)
 
     def _blink_leds(self):
@@ -1438,7 +1515,21 @@ class TetrisTagApp(BaseApp):
             self._start_word(0)
             return
 
-        if self.state == _CAT:
+        if NAME_MENU:
+            if UserA.pressed():  # the next name, whatever is going on
+                leds.fill((0, 0, 0))
+                self.seen[0] = True  # shows on the button circle at the next refresh
+                print("User A: next name")
+                self._start_word(self.word + 1)
+            if UserB.pressed():
+                if self.state == _DROP and self.fast:  # turns the piece at the next refresh
+                    self.taps[1] += 1
+                    self.last_side = 1
+                    print("User B: turn piece")
+                elif self.state != _CAT:  # (while the cat walks it does nothing)
+                    leds.fill((0, 0, 0))
+                    self._start_word(self.word)
+        elif self.state == _CAT:
             UserA.pressed()  # the cat is walking: a press does nothing (and must not skip the name)
             UserB.pressed()
         elif self.state == _DROP and self.fast:
@@ -1496,7 +1587,7 @@ class TetrisTagApp(BaseApp):
                 self._start_blink()
         elif self.state == _HOLD:
             if time.ticks_diff(time.ticks_ms(), self.hold_ms) >= HOLD_S * 1000:
-                self._start_word(self.word + 1)
+                self._start_word(self.word if NAME_MENU else self.word + 1)
         elif self.state == _CAT:
             self._cat_next()
         elif BLINK_MODE == "leds":

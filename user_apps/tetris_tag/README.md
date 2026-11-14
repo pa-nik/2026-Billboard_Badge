@@ -7,21 +7,23 @@ the screen, one at a time, and you steer them. The name blinks three times, stay
 30 seconds, then the name is built again, and it loops forever. Each round starts with a black
 cat that walks in from the side of the screen and sits down just below the banner; a piece falls
 out of its rear, then the cat walks over to where the next piece goes, sits down there, and the
-next piece falls (see "The cat"). This is the "FELIX" version, with "BART 🐾 ТЕТРИС" in the banner
+next piece falls (see "The cat"). This is the "FELIX" version, with "🐾 BARTRIS 🐾" in the banner
 and no footer; put your own name in `NAMES` (see below).
 
 Concept by the Soviet people, execution by [pa-nik](https://github.com/pa-nik) & Claude.
 
 Controls:
 ```
-User A: turn the left falling piece 90 degrees clockwise (bottom left button)
-User B: turn the right falling piece 90 degrees clockwise (bottom right button)
+User A (bottom left button): select the next name from the list in the left score panel
+User B (bottom right button): turn the falling piece 90 degrees clockwise
 Menu +/-: back to the app menu (as for every app)
 ```
 The two top buttons are Menu -/+, which the badge firmware reserves for leaving an app, so
 the game uses the two bottom ones (positions from the PCB layout in `hardware/billboard_pcb`).
-Between names (while the screen is clearing, the name blinks or the finished name is held)
-User A skips to the next name and User B restarts the current one.
+User A selects the next name at any time (the round starts again, with the cat building it);
+User B, outside a falling piece, restarts the current name. (`NAME_MENU = False` gives the
+other versions' controls: two pieces, A turns the left one and B the right one, and between
+names A skips to the next name.)
 
 To install, run this from the root of the repo (the app also needs the newer display driver
 and its two banner images; see Installing below):
@@ -38,23 +40,27 @@ Then select "Tetris Tag" from the menu.
 
 ## How to play
 
-Two pieces appear together at 25% of the screen height, each turned a random quarter
-turn. They fall a few rows per refresh (about 0.65 s) **without turning** until you turn
-them. Press User A for the piece on the left and User B for the one on the right; each
-press turns it 90 degrees clockwise at the next refresh. When a piece is the right way up
-it drops into its place on the next refresh. A piece in the air is drawn as white blocks with a black border. It arrives at its place
-still as an outline; one refresh later it turns solid black, and then the next pieces start. A piece you leave alone turns itself,
-90 degrees a refresh by the shorter way, once it reaches 50% of the screen height (a little higher, see Where the name sits)
-(`AUTO_TURN_PCT`), so the game plays itself if nobody presses. Buttons only count above
-that line. Each piece stays in its own half of the screen while it is falling, so the two
-never collide. When one piece is alone (the last of a letter), either button turns it.
+The three names, FELIX, SONYA and IRINA, are listed at the left of the banner on small labels:
+the selected one black on white, the other two white on black. Press **User A** to select the next one (it cycles); the screen
+is wiped, the cat walks in, and the selected name is built out of falling pieces. Press **User B**
+to turn the falling piece: each press turns it 90 degrees clockwise at the next refresh.
+
+One piece falls at a time, out of the cat. It appears just under the cat, turned a random
+quarter turn, and falls about a row per refresh (about 0.65 s) **without turning** until you turn
+it. When the piece is the right way up it drops into its place on the next refresh. A piece
+is solid black while it falls, and it arrives at its place still solid black; one refresh later
+it turns white with a black border, and then the cat walks to where the next piece goes. So
+the name ends up as white letters with black borders. A piece you leave alone turns itself, 90 degrees a refresh by the shorter way, once it
+reaches the auto-turn line (`AUTO_TURN_PCT`, and a little higher, see Where the name sits), so
+the game plays itself if nobody presses. Buttons only count above that line.
 
 ## Make it your own
 
 Edit the top of `tetris_tag.py`:
 
-- `NAMES`: what to show, in order. It starts as `("FELIX",)`: replace that with your
-  own name, or list several to cycle through them. Only characters in `FONT` can be
+- `NAMES`: the names to build. It starts as `("FELIX", "SONYA", "IRINA")`: replace them with
+  your own (the first three are listed in the left panel for User A to pick from; with
+  `NAME_MENU = False` they are shown in turn instead). Only characters in `FONT` can be
   shown: the letters A to Z and a to z, é, the digits 0 to 9, and space. There is no punctuation yet:
   add a glyph to `FONT` for any other character (5 wide, 7 tall, `X` is a block). Long names
   get small blocks and take longer, since the pieces fall a fixed distance per refresh.
@@ -62,7 +68,7 @@ Edit the top of `tetris_tag.py`:
   fall at a time (1 or 2; the two are picked far apart, one over the first word and one over the
   last words of the name, or, for a one-word name, at least 40% of its width apart), the screen
   height they start from, how far they fall each refresh in
-  pixels (36: 3 rows for 12 px blocks, 2.25 for 16 px blocks; larger is a faster game but leaves
+  pixels (36: 3 rows for 12 px blocks, 1.8 for 20 px blocks, slowed to 1 here; larger is a faster game but leaves
   less time to press a button before the piece turns itself), the fewest refreshes a player is
   to get to turn a piece (the fall slows down to allow it), and the screen height where an
   unturned piece starts turning itself.
@@ -82,41 +88,60 @@ badge; the name then stands `BOTTOM_MARGIN` above it.)
 
 ### Where the name sits
 
-With no footer the name sits `BOTTOM_MARGIN` above the bottom of the screen: 75 px, which puts it
-15% of the screen height (101 px) lower than it was above the old 168 px footer (letters from
-y 485 to 597 of 672 for the 16 px blocks of "FELIX"). The cat sits high, just under the banner, and
-the pieces come out below it (at y 293), so they have about 190 px to fall and turn in. A piece
-has to be the right way up before it reaches the name, so the line where an unturned piece starts
-turning itself (`AUTO_TURN_PCT`, row 21 = 336 px) is as high as needs be, and the fall slows
-down when needed, in quarter rows down to one row a refresh, so that a player gets at least
-`MIN_PRESS_FRAMES` (3) refreshes, about 2 s, to turn a piece: for "FELIX" the piece falls one
-row (16 px) a refresh and there are 3 refreshes to press. `NAME_RISE_PCT` lifts the name and
-leaves less time.
+The letters are built from 20 px blocks (`MAX_CELL`; it was 16, so they are 25% larger): "FELIX",
+"SONYA" and "IRINA" are 29, 29 and 25 blocks wide, 580 px at most, and 7 blocks (140 px) tall.
+With no footer the name sits `BOTTOM_MARGIN` above the bottom of the screen: 72 px, about 15% of
+the screen height (100 px) lower than it was above the old 168 px footer (letters from y 460 to
+600 of 672). The cat sits high, just under the banner, and the pieces come out below it (at
+y 300), so they have about 160 px to fall and turn in. A piece has to be the right way up before
+it reaches the name, so the line where an unturned piece starts turning itself (`AUTO_TURN_PCT`,
+55% = row 18, 360 px) is as high as needs be, and the fall slows down when needed, in quarter rows
+down to one row a refresh, so that a player gets at least `MIN_PRESS_FRAMES` (3) refreshes, about
+2 s, to turn a piece: for these names the piece falls one row (20 px) a refresh and there are
+3 refreshes to press. The larger blocks only fit with this margin and an auto-turn line of 55%:
+with a margin of 75 px or the line at 50% a player would get one refresh. `NAME_RISE_PCT` lifts
+the name and leaves less time.
 
 ### Score boards
 
-At each end of the top banner is a panel for one player: **User A on the left, User B on the right**.
-A panel is the red band with white lettering; the two are mirror images: User A's has the
-NEXT and button column on the outside and SCORE and LINES beside it, User B's the other way
-round, and is placed so that its outer margin to the screen edge (14 px) equals the left one's. It shows
+At each end of the top banner is a panel: **User A on the left, User B on the right**. Both are
+the red band with white lettering, and the right one is placed so that its outer margin to the
+screen edge (14 px) equals the left one's.
 
-- `SCORE`: 10 points for each piece the player lands, 10 more if they turned it right way up
-  themselves before it started turning itself, and 100 for the piece that finishes a letter;
-- `LINES`: the letters the player has finished (a letter is this game's line; the player whose
-  piece completes it gets it);
-- `NEXT`: the piece that will come down on that side next;
-- the button letter, A or B, and beside it (left of the A, right of the B) two circles drawn like
-  the two buttons on that side of the badge, one above the other: an outline for the menu
-  button above and a filled circle for the User button below. A black dot appears in the middle
-  of the filled circle on the refresh after the button is pressed (and stays while it is held), so
-  you can see that the badge noticed the press. The refresh takes about 0.65 s, so the dot lags
-  the press a little; a tap shorter than that still shows for one refresh.
+**Left (User A): the names.** Only User A's button part is kept (the big A
+and two circles drawn like the two buttons on that side of the badge, one above the other: an
+outline for the menu button and a filled circle for the User button), moved up to the top edge
+of the screen, as User B's is on the right (`_BTN_UP`); there is no `USER` text above them any more. Beside it the three names
+are set in the game's own block letters (small: 2.8 px blocks), each on its own label, one
+above the other: the selected name black on a white label and the other two white on black
+labels. User A's button cycles through them. A black dot appears in the middle of
+the filled circle on the refresh after the button is pressed (and stays while it is held), so
+you can see that the badge noticed the press. The refresh takes about 0.65 s, so the dot lags
+the press a little.
+
+**Right (User B): the score.** It keeps the score of the falling pieces for the whole game:
+
+- `SCORE`: 10 points for each piece that lands, 10 more if the player turned it right way up
+  themselves before it started turning itself, and 100 for the piece that finishes a letter
+  (the letters finished are still counted for that bonus, but there is no `LINES` display);
+- `NEXT`, under the score: the piece that will come down after the one that is falling (or
+  being walked to);
+- the big B and its two button circles, with the same press dot (User B turns the piece).
+
+The score starts again from 0 with each name. (`NAME_MENU = False` brings back the two-panel
+layout with `SCORE`, `LINES` and `NEXT` on each side.)
 
 In the middle at the top, a timer in `MM:SS` (white on black) shows the time since the first piece started to
 fall; it stops when the last piece lands. There is no level, as nothing speeds up. The numbers use
-the same block font as the name, so the digits 0 to 9 and the colon are in it. Scores reset with
-each name. If one piece is alone in a wave, the player who pressed a button last gets it.
+the same block font as the name, so the digits 0 to 9 and the colon are in it.
 `SCOREBOARD = False` (or a banner smaller than the full 25%) leaves the banner without them.
+
+**Why the names are on labels:** a name cannot be white lettering on the red and then become black
+on a white background when it is selected: the partial refresh cannot turn red pixels into anything
+else, and the red under a white label could never come back. So every name has its own label that
+is not red from the start (the full refresh leaves it black or white), and the partial refresh only
+swaps the colours: white label with black letters for the selected name, black label with white
+letters for the others, like the timer.
 
 **Why the numbers sit in white boxes:** red can only be drawn by the ~36 s full refresh; the fast
 partial refresh can only switch pixels between black and white, and a pixel that has been made
@@ -141,13 +166,13 @@ faces the way it walked, so it turns round when the next place is to its left. I
 sat for the last piece while the name is held, and is wiped with the rest of the field before the
 next round, when it walks in again.
 
-Because only one piece falls, either button (User A or B) turns it; the points go to whoever
-pressed last. While the cat is walking the buttons do nothing (and do not skip the name).
+Because only one piece falls, User B turns it (User A selects the name, even while the cat is
+walking, which starts the round again). While the cat is walking User B does nothing.
 
 The cat is black on white, drawn into the black plane between the red banner and the bottom of
 the screen, so it is just more pixels for the partial refresh (the red is never touched, and
 nothing has to be installed: the pictures are in `tetris_tag.py`). `CAT = False` leaves it out
-and the pieces appear at `SPAWN_PCT`, two at a time, as in the other versions. The cat only
+and the pieces appear at `SPAWN_PCT` (one at a time while `NAME_MENU` is on, else two, as in the other versions). The cat only
 exists on the partial-refresh path, not in the slideshow fallback.
 
 The pictures are drawn with `#` in the `_CAT_WALK` (four walking poses) and `_CAT_SIT` tables in
@@ -161,7 +186,7 @@ the Faberrgen screen of the main branch, which this branch does not show; they a
 
 ## Banner
 
-A red banner runs across the top 25% of the screen, with "BART 🐾 ТЕТРИС" in white
+A red banner runs across the top 25% of the screen, with "🐾 BARTRIS 🐾" in white
 Helvetica Bold centred in it, low in the band under the timer and between the two score boards
 (see Score boards), so the lettering is smaller than the band would allow. Pieces fall in the
 space below it.
@@ -172,7 +197,7 @@ has no Helvetica, and its built-in font has neither Cyrillic nor the hammer and 
 
 ```
 pip install pillow fonttools
-python3 make_banner.py --text "BART 🐾 ТЕТРИС" --pct 25 --margin 190 --height-fraction 0.42 --drop 18   # tetris_banner.png (72 px letters)
+python3 make_banner.py --text "🐾 BARTRIS 🐾" --pct 25 --margin 190 --height-fraction 0.42 --drop 18   # tetris_banner.png (88 px letters)
 python3 make_banner.py --text "HELLO" --pct 25 --margin 190 --height-fraction 0.42 --drop 18
 mpremote cp tetris_banner.png :data/graphics/tetris_banner.png
 ```
@@ -206,8 +231,8 @@ the pixels that changed, in about 0.65 s a frame (measured on a badge: median 62
    bands, so the app has its own `start_keep`). The partial pulls only touch the pixels around
    what changed, so the bands are not driven.
 2. The pieces then fall (one at a time with the cat, see The cat). A fall is one refresh to show the
-   pieces, a few more while they fall and turn, one to drop each into place as an outline and one
-   more to turn it solid black. A square,
+   pieces, a few more while they fall and turn, one to drop each into place (still solid black) and
+   one more to turn it white with a black border. A square,
    which looks the same turned, is never turned and drops straight away.
    Pieces are two to four blocks, with no single-block pieces. A piece normally joins blocks
    edge to edge, like a real Tetris piece, but where a letter needs it (the diagonal strokes
@@ -245,8 +270,9 @@ half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 (name, blank, name...), but each step is at least one drive step, so it is much slower.
 
 When the blinking is over the finished name stays on the screen, untouched, for `HOLD_S`
-seconds (30), then the next round starts with a partial wipe and the cat walks in again. User A skips the wait to the next name and User B restarts the
-current one right away.
+seconds (30), then the next round starts with a partial wipe and the cat walks in again, building
+the same name (the selection stays until User A changes it). User A starts the next name right
+away and User B, between pieces, restarts the current one.
 
 ## Installing
 
