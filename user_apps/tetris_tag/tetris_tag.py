@@ -46,7 +46,7 @@ try:  # the partial refresh driver; without it the app falls back to the slidesh
 except ImportError:
     _ep = None
 
-NAMES = ("FELIX", "SONYA", "IRINA")
+NAMES = ("IRINA", "SONYA", "FELIX")
 """The names to build. With NAME_MENU (below) the first three are listed in the left score
 panel and User A picks one; without it they are shown in turn, forever. Use only the
 characters in FONT below (the letters A to Z and a to z, é, and space). Punctuation needs a
@@ -105,8 +105,8 @@ missing the footer is a plain red band."""
 
 SCOREBOARD = True
 """Show a score board for each player at the two ends of the top banner (SCORE, LINES, the
-NEXT piece and which button, User A on the left and User B on the right) and a timer, MM:SS,
-at the top centre. Needs the banner to be the full 25%. A letter finished is a line; 10 points
+NEXT piece and which button, User A on the left and User B on the right) and a clock, HH:MM,
+at the top centre that runs all the time (see CLOCK_IDLE_TICK). Needs the banner to be the full 25%. A letter finished is a line; 10 points
 for a piece landed, 10 more if the player turned it right way up before it started turning
 itself, 100 for the piece that finishes a letter. The panels are red with white lettering;
 the numbers and the next piece are black in small white boxes and the timer is white on a
@@ -144,6 +144,13 @@ CAT_STEP_PX = 72
 
 CAT_GAP_PX = 8
 """Space between the bottom of the banner and the top of the sitting cat."""
+
+CLOCK_IDLE_TICK = True
+"""The clock at the top (HH:MM, hours and minutes) runs all the time, from the first animation of
+a name until User A picks the next one, which starts it again from 00:00 (building, blinking,
+holding, the next rounds of the same name). While nothing else moves (the blink and the 30 s
+hold) the clock is refreshed on its own whenever the minute changes, one small partial refresh
+a minute; False: not at all, then it only moves when something else is drawn."""
 
 SAND = True
 """Sand under the name: an evenly stippled ground from just under the letters to the bottom of
@@ -787,9 +794,11 @@ _HUD_H = 152
 _PANEL_MARGIN = 6  # of the left panel from the left edge
 _RIGHT_PANEL_SHIFT = 12  # the right panel sits this much further in from the right edge: its outer
 # margin then equals the left panel's (14 px)
-_TIMER_W = 140  # the box of the timer (black, with white digits)
-_TIMER_H = 42
-_TIMER_CELL = 4.5  # block size of the timer digits: 50% larger than the scores' 3
+_TIMER_W = 154  # the box of the timer (black, with white digits): 10% larger than it was (140 x 42)
+_TIMER_H = 46  # it grows sideways and downwards from the same top edge; the banner lettering stays
+_TIMER_CELL = 4.95  # block size of the timer digits: 10% more than 4.5 (the scores' are 3)
+_SCORE_CELL = 3  # block size of the score digits (and of the names in the menu)
+_TIMER_PAD = (10, 6)  # space between the box edge and the digits (left, top)
 # Where the SCORE/LINES column and the NEXT/button column start inside a panel. The left panel
 # (User A) has NEXT/button first; the right panel (User B) has SCORE/LINES first. 19 px apart.
 _SCORE_DX = (69, 8)
@@ -800,10 +809,10 @@ _BTN_DX = (8, 36)  # where their centres are in the column: left of the A, right
 _LETTER_DX = (21, 0)  # and where the A or B itself starts
 _BTN_UP = 80  # with the name menu the A and B button groups sit this much higher, near the top edge
 _MENU_DX = 71  # the labels of the names in the left panel: where the first starts inside the panel,
-_MENU_DY = 26  # how far down,
+_MENU_DY = 28  # how far down (level with the top of the SCORE box),
 _MENU_GAP = 5  # the space between two labels,
 _MENU_PAD = 5  # the space round the letters inside a label,
-_MENU_CELL = 2.8  # the block size of the letters (smaller if a name would be wider than
+_MENU_CELL = _SCORE_CELL  # the block size of the letters: the same as the score digits (smaller if a name would be wider than
 _MENU_MAX_W = 105  # this many pixels)
 
 
@@ -818,8 +827,8 @@ def _text_w(s, cell):
 
 
 def _clock(seconds):
-    """MM:SS (minutes stop at 99)."""
-    return "%02d:%02d" % (min(seconds // 60, 99), seconds % 60)
+    """HH:MM, hours and minutes (the hours stop at 99)."""
+    return "%02d:%02d" % (min(seconds // 3600, 99), seconds // 60 % 60)
 
 
 class _Hud:
@@ -889,6 +898,8 @@ class _Hud:
                 if side == 1:
                     _text(red, "SCORE", x + sx + 2, y + 10, 2, 0)
                     _text(red, "NEXT", x + sx + 2, y + 64, 2, 0)  # where LINES was
+                elif self.menu:  # the same size and height as SCORE, over the list of names
+                    _text(red, "NAME", self.menu[0][1] + 2, y + 10, 2, 0)
             else:
                 _text(red, "SCORE", x + sx + 2, y + 10, 2, 0)
                 _text(red, "LINES", x + sx + 2, y + 64, 2, 0)
@@ -916,15 +927,15 @@ class _Hud:
             if NAME_MENU:
                 if side == 1:  # SCORE, and the next piece in place of LINES
                     black.fill_rect(x + sx, y + 28, 80, 29, 0)
-                    _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, 3)
+                    _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, _SCORE_CELL)
                     black.fill_rect(x + sx, y + 82, 42, 42, 0)
                     for cx, cy in nexts[side] or ():
                         black.fill_rect(x + sx + 3 + cx * 9, y + 85 + cy * 9, 8, 8, 1)
             else:
                 black.fill_rect(x + sx, y + 28, 80, 29, 0)
-                _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, 3)
+                _text(black, "%04d" % min(score[side], 9999), x + sx + 4, y + 32, _SCORE_CELL)
                 black.fill_rect(x + sx, y + 82, 44, 29, 0)
-                _text(black, "%02d" % min(lines[side], 99), x + sx + 4, y + 86, 3)
+                _text(black, "%02d" % min(lines[side], 99), x + sx + 4, y + 86, _SCORE_CELL)
                 black.fill_rect(x + nx, y + 28, 42, 42, 0)
                 for cx, cy in nexts[side] or ():
                     black.fill_rect(x + nx + 3 + cx * 9, y + 31 + cy * 9, 8, 8, 1)
@@ -934,7 +945,7 @@ class _Hud:
             if pressed[side]:
                 _disc(black, bx, self.by + 131, _DOT_R, 1)
         black.fill_rect(self.tx, self.ty, _TIMER_W, _TIMER_H, 1)  # a black box, white digits
-        _text(black, _clock(seconds), self.tx + 7, self.ty + 5, _TIMER_CELL, 0)
+        _text(black, _clock(seconds), self.tx + _TIMER_PAD[0], self.ty + _TIMER_PAD[1], _TIMER_CELL, 0)
 
 
 class _Banner:
@@ -1214,10 +1225,12 @@ class TetrisTagApp(BaseApp):
         self.glyph_left = []  # pieces still to land in each letter
         self.last_side = 0  # which player pressed a button last
         self.seen = [False, False]  # a button was pressed since the last refresh
-        self.run_start = 0  # ticks_ms when the pieces started to fall; 0 before
-        self.run_end = 0  # and when the last piece landed; 0 while it runs
+        self.run_start = 0  # ticks_ms when the pieces started to fall; 0 before (for the log)
+        self.run_end = 0  # and when the last piece landed; 0 while it runs (for the log)
+        self.clock_start = None  # ticks_ms when the clock started; None: not started (see _request)
+        self.clock_shown = -1  # the minutes (since the start) it showed last
 
-    def _start_word(self, idx):
+    def _start_word(self, idx, reset_clock=False):
         self.word = idx % len(NAMES)
         plan = self.plans.get(self.word)
         if plan is None:
@@ -1244,6 +1257,9 @@ class TetrisTagApp(BaseApp):
             self.lines = [0, 0]
             self.glyph_left = list(plan.glyph_sizes)
             self.run_start = self.run_end = 0
+            if reset_clock:
+                self.clock_start = None  # starts at the first refresh of the animation
+                self.clock_shown = -1
             self.batch = 0
             self.frame = 0
             self.landed = []
@@ -1331,6 +1347,8 @@ class TetrisTagApp(BaseApp):
         self.req = kind
         self.pending = True
         self.frame_ms = time.ticks_ms()
+        if self.clock_start is None and kind == _PART:
+            self.clock_start = self.frame_ms or 1  # the clock starts with the first animation frame
 
     def _full(self):
         """A normal refresh of the whole panel (about 35 s)."""
@@ -1397,8 +1415,9 @@ class TetrisTagApp(BaseApp):
         if hud is None:
             return
         seconds = 0
-        if self.run_start:
-            seconds = time.ticks_diff(self.run_end or time.ticks_ms(), self.run_start) // 1000
+        if self.clock_start is not None:
+            seconds = time.ticks_diff(time.ticks_ms(), self.clock_start) // 1000
+        self.clock_shown = seconds // 60
         waves = self.waves if self.fast else ()
         upcoming = waves[self.batch + 1] if self.batch + 1 < len(waves) else ()
         nexts = []
@@ -1486,7 +1505,7 @@ class TetrisTagApp(BaseApp):
 
     def _start_blink(self):
         self.state = _BLINK
-        self.run_end = time.ticks_ms() or 1  # the timer stops
+        self.run_end = time.ticks_ms() or 1  # (the clock at the top keeps running)
         self.blink_step = 0
         self.blink_ms = time.ticks_ms()
         if BLINK_MODE == "leds":
@@ -1561,7 +1580,16 @@ class TetrisTagApp(BaseApp):
         self._draw_hud()  # a new name shows as selected at once
         self._request(_PART)
 
+    def _tick_clock(self):
+        """While nothing moves (the blink, the hold) keep the clock at the top running."""
+        if not CLOCK_IDLE_TICK or not self.fast or self.clock_start is None:
+            return
+        if time.ticks_diff(time.ticks_ms(), self.clock_start) // 60000 != self.clock_shown:  # a new minute
+            self._draw_hud()
+            self._request(_PART)
+
     def _blink_leds(self):
+        self._tick_clock()
         if time.ticks_diff(time.ticks_ms(), self.blink_ms) < BLINK_MS:
             return
         self.blink_ms = time.ticks_add(self.blink_ms, BLINK_MS)
@@ -1599,7 +1627,7 @@ class TetrisTagApp(BaseApp):
             leds.fill((0, 0, 0))
             self.failed = False
             self.need_full = True  # whatever was on the panel, draw the red bands afresh
-            self._start_word(0)
+            self._start_word(0, True)
             return
 
         if NAME_MENU:
@@ -1607,7 +1635,7 @@ class TetrisTagApp(BaseApp):
                 leds.fill((0, 0, 0))
                 self.seen[0] = True  # shows on the button circle at the next refresh
                 print("User A: next name")
-                self._start_word(self.word + 1)
+                self._start_word(self.word + 1, True)  # the clock starts again from 00:00
             if UserB.pressed():
                 if self.state == _DROP and self.fast:  # turns the piece at the next refresh
                     self.taps[1] += 1
@@ -1631,7 +1659,7 @@ class TetrisTagApp(BaseApp):
                 print("User B: turn right piece")
         elif UserA.pressed():
             leds.fill((0, 0, 0))
-            self._start_word(self.word + 1)
+            self._start_word(self.word + 1, True)
         elif UserB.pressed():
             leds.fill((0, 0, 0))
             self._start_word(self.word)
@@ -1675,6 +1703,8 @@ class TetrisTagApp(BaseApp):
         elif self.state == _HOLD:
             if time.ticks_diff(time.ticks_ms(), self.hold_ms) >= HOLD_S * 1000:
                 self._start_word(self.word if NAME_MENU else self.word + 1)
+            else:
+                self._tick_clock()
         elif self.state == _CAT:
             self._cat_next()
         elif BLINK_MODE == "leds":

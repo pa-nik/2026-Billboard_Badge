@@ -7,7 +7,7 @@ the screen, one at a time, and you steer them. The name blinks three times, stay
 30 seconds, then the name is built again, and it loops forever. Each round starts with a black
 cat that walks in from the side of the screen and sits down just below the banner; a piece falls
 out of its rear, then the cat walks over to where the next piece goes, sits down there, and the
-next piece falls (see "The cat"). This is the "FELIX" version, with "🐾 BARTRIS 🐾" in the banner
+next piece falls (see "The cat"). This is the "IRINA / SONYA / FELIX" version, with "🐾 BARTRIS 🐾" in the banner
 and no footer; put your own name in `NAMES` (see below).
 
 Concept by the Soviet people, execution by [pa-nik](https://github.com/pa-nik) & Claude.
@@ -40,8 +40,8 @@ Then select "Tetris Tag" from the menu.
 
 ## How to play
 
-The three names, FELIX, SONYA and IRINA, are listed at the left of the banner on small labels:
-the selected one black on white, the other two white on black. Press **User A** to select the next one (it cycles); the screen
+The three names, IRINA, SONYA and FELIX (from the top down), are listed at the left of the banner
+on small labels, IRINA selected when the app starts: the selected one black on white, the other two white on black. Press **User A** to select the next one (it cycles); the screen
 is wiped, the cat walks in, and the selected name is built out of falling pieces. Press **User B**
 to turn the falling piece: each press turns it 90 degrees clockwise at the next refresh.
 
@@ -58,7 +58,7 @@ the game plays itself if nobody presses. Buttons only count above that line.
 
 Edit the top of `tetris_tag.py`:
 
-- `NAMES`: the names to build. It starts as `("FELIX", "SONYA", "IRINA")`: replace them with
+- `NAMES`: the names to build. It starts as `("IRINA", "SONYA", "FELIX")`: replace them with
   your own (the first three are listed in the left panel for User A to pick from; with
   `NAME_MENU = False` they are shown in turn instead). Only characters in `FONT` can be
   shown: the letters A to Z and a to z, é, the digits 0 to 9, and space. There is no punctuation yet:
@@ -88,8 +88,8 @@ badge; the name then stands `BOTTOM_MARGIN` above it.)
 
 ### Where the name sits
 
-The letters are built from 20 px blocks (`MAX_CELL`; it was 16, so they are 25% larger): "FELIX",
-"SONYA" and "IRINA" are 29, 29 and 25 blocks wide, 580 px at most, and 7 blocks (140 px) tall.
+The letters are built from 20 px blocks (`MAX_CELL`; it was 16, so they are 25% larger): "IRINA",
+"SONYA" and "FELIX" are 25, 29 and 29 blocks wide, 580 px at most, and 7 blocks (140 px) tall.
 With no footer the name sits `BOTTOM_MARGIN` above the bottom of the screen: 72 px, about 15% of
 the screen height (100 px) lower than it was above the old 168 px footer (letters from y 460 to
 600 of 672). The cat sits high, just under the banner, and the pieces come out below it (at
@@ -130,7 +130,8 @@ screen edge (14 px) equals the left one's.
 and two circles drawn like the two buttons on that side of the badge, one above the other: an
 outline for the menu button and a filled circle for the User button), moved up to the top edge
 of the screen, as User B's is on the right (`_BTN_UP`); there is no `USER` text above them any more. Beside it the three names
-are set in the game's own block letters (small: 2.8 px blocks), each on its own label, one
+are set in the game's own block letters (3 px blocks, the same size as the score digits on the right), each on its own label, under
+the word `NAME` (white on the red, the same size and height as `SCORE` on the right), one
 above the other: the selected name black on a white label and the other two white on black
 labels. User A's button cycles through them. A black dot appears in the middle of
 the filled circle on the refresh after the button is pressed (and stays while it is held), so
@@ -149,9 +150,15 @@ the press a little.
 The score starts again from 0 with each name. (`NAME_MENU = False` brings back the two-panel
 layout with `SCORE`, `LINES` and `NEXT` on each side.)
 
-In the middle at the top, a timer in `MM:SS` (white on black) shows the time since the first piece started to
-fall; it stops when the last piece lands. There is no level, as nothing speeds up. The numbers use
-the same block font as the name, so the digits 0 to 9 and the colon are in it.
+In the middle at the top, a clock in `HH:MM`, hours and minutes (white on black), runs all the time:
+it starts with the first animation of a name (the cat walking in) and keeps going through the
+building, the blinking, the 30 s hold and the next rounds of the same name, until **User A** picks
+the next name, which sets it back to 00:00 and starts it again. (User B restarting a round does not
+reset it.) It changes once a minute. While nothing else moves (the blink and the hold) the clock is
+refreshed on its own when the minute changes (`CLOCK_IDLE_TICK`; False stops that, and then it only
+moves when something else is drawn): at most one small partial refresh a minute. It reads 99 hours
+at most. There is no level, as nothing speeds up. The numbers use the same block font as the name,
+so the digits 0 to 9 and the colon are in it.
 `SCOREBOARD = False` (or a banner smaller than the full 25%) leaves the banner without them.
 
 **Why the names are on labels:** a name cannot be white lettering on the red and then become black
