@@ -3,8 +3,9 @@
 Tetris Tag takes inspiration from Tetris to assemble your name on the badge. Use User A and B buttons to play!
 
 Tetris-like pieces fall and stack up to spell a name along the bottom edge of
-the screen, one at a time, and you steer them. The name blinks three times, stays up for
-30 seconds, then the name is built again, and it loops forever. Each round starts with a black
+the screen, one at a time, and you steer them. When the name is finished the LEDs blink three
+times, the animation stops, the picture stays on the paper and the ESP32 goes to sleep until you
+press User A (see "Sleeping when the name is done"). Each round starts with a black
 cat that walks in from the side of the screen and sits down just below the banner; a piece falls
 out of its rear, then the cat walks over to where the next piece goes, sits down there, and the
 next piece falls (see "The cat"). This is the "IRINA / SONYA / FELIX" version, with "🐾 BARTRIS 🐾" in the banner
@@ -72,8 +73,9 @@ Edit the top of `tetris_tag.py`:
   less time to press a button before the piece turns itself), the fewest refreshes a player is
   to get to turn a piece (the fall slows down to allow it), and the screen height where an
   unturned piece starts turning itself.
-- `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below. `HOLD_S`: how long the finished name
-  stays up after the blinking (30 s).
+- `BLINK_MODE`, `BLINK_COUNT`, `BLINK_MS`: see below. `SLEEP_WHEN_DONE`: sleep when the name is
+  finished (see below); with `False`, `HOLD_S` is how long the finished name stays up (30 s)
+  before it is built again.
 - `BANNER_PCT`, `BANNER_IMAGE`: the banner height and its image (see Banner).
 - `FOOTER_PCT`, `FOOTER_IMAGE`, `BOTTOM_MARGIN`, `NAME_RISE_PCT`: the footer band at the bottom
   (0: none on this branch), its image, and where the name sits (see Footer).
@@ -150,15 +152,8 @@ the press a little.
 The score starts again from 0 with each name. (`NAME_MENU = False` brings back the two-panel
 layout with `SCORE`, `LINES` and `NEXT` on each side.)
 
-In the middle at the top, a clock in `HH:MM`, hours and minutes (white on black), runs all the time:
-it starts with the first animation of a name (the cat walking in) and keeps going through the
-building, the blinking, the 30 s hold and the next rounds of the same name, until **User A** picks
-the next name, which sets it back to 00:00 and starts it again. (User B restarting a round does not
-reset it.) It changes once a minute. While nothing else moves (the blink and the hold) the clock is
-refreshed on its own when the minute changes (`CLOCK_IDLE_TICK`; False stops that, and then it only
-moves when something else is drawn): at most one small partial refresh a minute. It reads 99 hours
-at most. There is no level, as nothing speeds up. The numbers use the same block font as the name,
-so the digits 0 to 9 and the colon are in it.
+There is no clock or level: the middle of the top band is just the title. The numbers use the same
+block font as the name, so the digits 0 to 9 are in it.
 `SCOREBOARD = False` (or a banner smaller than the full 25%) leaves the banner without them.
 
 **Why the names are on labels:** a name cannot be white lettering on the red and then become black
@@ -166,7 +161,7 @@ on a white background when it is selected: the partial refresh cannot turn red p
 else, and the red under a white label could never come back. So every name has its own label that
 is not red from the start (the full refresh leaves it black or white), and the partial refresh only
 swaps the colours: white label with black letters for the selected name, black label with white
-letters for the others, like the timer.
+letters for the others.
 
 **Why the numbers sit in white boxes:** red can only be drawn by the ~36 s full refresh; the fast
 partial refresh can only switch pixels between black and white, and a pixel that has been made
@@ -174,10 +169,10 @@ white (or black) cannot be turned back to red by it. White digits on a red backg
 therefore need a full refresh every time a number changes. So the lettering and the
 background are drawn once, by the full refresh at launch, and everything that changes (the three
 numbers and the next piece) is black in a small white box that the partial refresh can
-redraw. The timer is the other way round, white digits on a black box: a black background works
-just as well as a white one, because the box is not red (the full refresh leaves it black) and the
-partial refresh only has to switch its pixels between black and white. Only those boxes are ever
-changed after launch, so the red is never touched.
+redraw. A black background works just as well as a white one (the name labels use both),
+because the box is not red (the full refresh leaves it black or white) and the partial refresh
+only has to switch its pixels between black and white. Only those boxes are ever changed after
+launch, so the red is never touched.
 
 ## The cat
 
@@ -212,7 +207,7 @@ the Faberrgen screen of the main branch, which this branch does not show; they a
 ## Banner
 
 A red banner runs across the top 25% of the screen, with "🐾 BARTRIS 🐾" in white
-Helvetica Bold centred in it, low in the band under the timer and between the two score boards
+Helvetica Bold centred in it, between the two score boards
 (see Score boards), so the lettering is smaller than the band would allow. Pieces fall in the
 space below it.
 
@@ -233,8 +228,9 @@ fallback font (Apple Symbols by default, thickened a little to match the bold le
 `--symbol-font` picks another). Emoji, such as the paw prints, come from Apple Color Emoji
 (colour pictures only, so their outline is used, as a white shape as tall as the capitals).
 Only the rendered shapes end up in the PNG, no font file.
-`--margin 190` keeps the lettering between the score boards, `--drop 18` moves it down under
-the timer, and `--size N` forces a font size. `BANNER_PCT` in
+`--margin 190` keeps the lettering between the score boards, `--drop 18` moved it down to
+make room for a clock that is no longer there (use `--drop 0` to centre it), and `--size N`
+forces a font size. `BANNER_PCT` in
 `tetris_tag.py` and `--pct` must agree (25% is 168 px). If the image
 is not on the badge, the banner is a plain red band.
 
@@ -287,17 +283,59 @@ If the badge is not a B1 panel, or the firmware does not have `epd_partial.py`, 
 refresh stops working, the app falls back to a slideshow of full refreshes, one per snapshot,
 with the pieces in the air in red. The slideshow does not turn the pieces.
 
-## Blinking and holding
+## Sleeping when the name is done
 
 The paper cannot refresh in half a second, so `BLINK_MODE = "leds"` (the default)
 keeps the finished name on the paper and blinks the LED bar, half a second on and
 half a second off, three times. `BLINK_MODE = "screen"` blinks the paper itself
 (name, blank, name...), but each step is at least one drive step, so it is much slower.
 
-When the blinking is over the finished name stays on the screen, untouched, for `HOLD_S`
-seconds (30), then the next round starts with a partial wipe and the cat walks in again, building
-the same name (the selection stays until User A changes it). User A starts the next name right
-away and User B, between pieces, restarts the current one.
+With `SLEEP_WHEN_DONE = True` (the default) that is the end of the animation: nothing is redrawn
+any more, the cat stays where it sat, and the finished screen stays on the paper, which keeps
+its picture without power. Then:
+
+1. The app waits until the panel has powered itself down (the picture has been still for 2 s, so
+   its booster is off). It never sleeps with the panel's booster up; if that does not happen within
+   20 s it says so over serial and keeps waiting.
+2. The LEDs are switched off and the ESP32 goes to **light sleep** (`machine.lightsleep()`), in naps of
+   `SLEEP_POLL_MS` (40 ms): after each nap it looks at the wake-up button (`SLEEP_WAKE_BUTTON`, "A" by
+   default, User A), and it goes straight back to sleep if the button is up. The RAM is kept, so the
+   app carries on where it stopped. It is asleep nearly all the time (a nap is 40 ms, the look about
+   4 ms).
+3. When the button is pressed (and stays down for 30 ms, so a glitch or a bounce is ignored) the badge
+   wakes, waits for the button to be let go (so the press is not counted twice), and starts the
+   next name of the list (`WAKE_NEXT_NAME = False` starts the same name again): the screen is wiped, the
+   cat walks in and builds it, as if User A had been pressed while the animation was running. A press
+   has to last a little longer than a nap plus 30 ms to be seen (about 75 ms), which a normal tap does.
+   While the badge sleeps the other buttons do nothing.
+
+**Why naps, and why User A and not User B:** this badge runs MicroPython 1.24.1, which only accepts a
+light-sleep pin wake-up on GPIO 0 to 21 (it answers `ValueError: invalid pin for wake` for anything
+else): that is User B (GPIO 16) and Menu + (GPIO 15), but not User A (GPIO 39) or Menu - (GPIO 40). So
+the app reads the button after short naps instead, which works on any pin, User A included. And
+User B must not be used even that way: on the ESP32-S3 GPIO 15 and 16 are the pins of the optional
+32 kHz crystal, and on this badge GPIO 16 chattered and then read low about 0.4 s after the chip
+went to sleep (measured: wake-up 238 ms after going to sleep, a burst of pin wake-ups, and a low level
+held longer than 60 ms by 442 ms), with nobody touching it, which counted as a press and rebuilt the
+name; in another run the same happened 31 s into the sleep. User A is not on those pins.
+`SLEEP_WAKE_BUTTON = "B"` is still possible but not recommended.
+
+**USB goes away when it sleeps, and does not come back:** after the first light sleep the badge
+disappears from the computer's USB (no serial port) and only returns when it is unplugged and plugged
+in again or reset. The app keeps running normally after the wake-up; only the serial link is gone.
+So to upload a new `tetris_tag.py` after it has slept, power-cycle the badge first: a plain replug of the USB cable is not always enough (once the badge came back on USB with the app still running, sending data out but accepting no commands, and only unplugging it for about 10 seconds fixed that). When it
+wakes it writes a note, `/sleep_note.txt`, to the badge's flash ("PRESS after N naps, M ms after going to
+sleep", plus a line for every glitch it ignored) that you can read after the replug with
+`mpremote cat :sleep_note.txt`: M is the time it really slept, measured with the system clock.
+
+If light sleep is not available, or the pin keeps blipping low without being a press (200 times), the
+app prints why over serial (or leaves a note) and stays awake with the picture up; the buttons still
+start a name.
+
+`SLEEP_WHEN_DONE = False` gives the old behaviour: the finished name stays up for `HOLD_S` seconds
+(30), then the next round starts with a partial wipe and the cat walks in again, building the same
+name (the selection stays until User A changes it); User A starts the next name right away and
+User B, between pieces, restarts the current one.
 
 ## Installing
 

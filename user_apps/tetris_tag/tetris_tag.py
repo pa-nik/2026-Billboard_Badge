@@ -1,6 +1,6 @@
 """Tetris Tag. Tetris-like pieces fall and stack up to spell a name along the
-bottom edge of the screen, the name blinks, stays up for HOLD_S seconds, then it is
-built again (or the next name, if NAMES lists more than one). A black cat walks in from the
+bottom edge of the screen and the LEDs blink when the name is done; then the animation stops and
+the ESP32 sleeps until the wake-up button (User A) is pressed (SLEEP_WHEN_DONE). A black cat walks in from the
 side at the start of each round and sits just below the banner; one piece at a time falls out
 of its rear, and after each the cat walks over to where the next one goes and sits down
 there before it falls.
@@ -8,6 +8,7 @@ there before it falls.
 User A: select the next name of the list in the left score panel (the round starts again,
         with the cat building it)
 User B: turn the falling piece 90 degrees clockwise (one piece falls at a time)
+When the name is done and the badge sleeps, the wake-up button (User A) wakes it and the next name starts.
 (with NAME_MENU = False: two pieces fall, A turns the left one and B the right one, and
 between names A skips to the next name and B restarts the current one)
 
@@ -38,6 +39,11 @@ import time
 
 from apps.base_app import BaseApp
 from lib.button import UserA, UserB
+try:
+    from lib import button as _button_module
+    _PINS = {"A": _button_module.USER_A_PIN, "B": _button_module.USER_B_PIN}
+except (ImportError, AttributeError):
+    _PINS = {"A": 39, "B": 16}  # the badge's User A and User B buttons
 from lib.epd import display, display_width, display_height
 from lib.led_bar import leds
 
@@ -105,12 +111,11 @@ missing the footer is a plain red band."""
 
 SCOREBOARD = True
 """Show a score board for each player at the two ends of the top banner (SCORE, LINES, the
-NEXT piece and which button, User A on the left and User B on the right) and a clock, HH:MM,
-at the top centre that runs all the time (see CLOCK_IDLE_TICK). Needs the banner to be the full 25%. A letter finished is a line; 10 points
+NEXT piece and which button, User A on the left and User B on the right). Needs the banner to be the full 25%. A letter finished is a line; 10 points
 for a piece landed, 10 more if the player turned it right way up before it started turning
 itself, 100 for the piece that finishes a letter. The panels are red with white lettering;
-the numbers and the next piece are black in small white boxes and the timer is white on a
-black box, because only white and black can be changed by a partial refresh."""
+the numbers and the next piece are black in small white boxes, because only white and black
+can be changed by a partial refresh."""
 
 BLINK_MODE = "leds"
 """'leds':   the finished name stays on the paper and the LED bar blinks.
@@ -145,12 +150,28 @@ CAT_STEP_PX = 72
 CAT_GAP_PX = 8
 """Space between the bottom of the banner and the top of the sitting cat."""
 
-CLOCK_IDLE_TICK = True
-"""The clock at the top (HH:MM, hours and minutes) runs all the time, from the first animation of
-a name until User A picks the next one, which starts it again from 00:00 (building, blinking,
-holding, the next rounds of the same name). While nothing else moves (the blink and the 30 s
-hold) the clock is refreshed on its own whenever the minute changes, one small partial refresh
-a minute; False: not at all, then it only moves when something else is drawn."""
+SLEEP_WHEN_DONE = True
+"""When the name is finished (the last piece has landed and the LEDs have blinked) the animation
+stops, the picture stays on the paper, and the ESP32 goes to light sleep until the wake-up button
+(SLEEP_WAKE_BUTTON) is pressed. It sleeps in short naps and looks at the button after each one
+(SLEEP_POLL_MS), instead of waking on a pin interrupt: this firmware (MicroPython 1.24) only accepts a
+pin wake-up on GPIO 0 to 21 (not User A, GPIO 39) and on the badge the pin wake-up woke the chip by
+itself after a while. The e-paper is powered down first (the paper keeps its picture without power).
+False: hold the name for HOLD_S seconds and build it again, forever, as before."""
+
+SLEEP_WAKE_BUTTON = "A"
+"""Which button wakes the badge: "A" (User A, GPIO 39) or "B" (User B, GPIO 16). Use "A": on the
+ESP32-S3 GPIO 15 and 16 are the pins of the optional 32 kHz crystal, and on this badge User B (16)
+and Menu + (15) misbehave when the chip goes to sleep: GPIO 16 chattered and then read low about
+0.4 s after the sleep began, with nobody touching it, so it counted as a press."""
+
+SLEEP_POLL_MS = 40
+"""How long each nap is while it waits for the button, in ms. A button press has to last a bit
+longer than this (plus 30 ms) to be seen. Shorter naps catch quicker taps and use a little more power."""
+
+WAKE_NEXT_NAME = True
+"""What the wake-up press does: True starts the next name of the list (what User A does when
+the badge is awake), False the same name again (what User B does)."""
 
 SAND = True
 """Sand under the name: an evenly stippled ground from just under the letters to the bottom of
@@ -288,6 +309,7 @@ _CLEAR = 2
 _DROP = 3
 _HOLD = 4
 _CAT = 5  # the cat walks in and sits down
+_SLEEP = 6  # the name is finished: wait for the panel to power down, then sleep until User A
 
 _FULL = 1  # what the screen task is asked to do: a normal refresh of the whole panel,
 _PART = 2  # or a partial one of what changed
@@ -747,6 +769,70 @@ def _draw_cat_at(plane, rows, rump, cx, face):
                  _cat_ground() - len(rows) * CAT_SCALE, CAT_SCALE)
 
 
+def _sleep_note(lines):
+    """Leave a note on the badge's flash: the serial port is gone while it sleeps (and after), so
+    this is the only record of what woke it. Read it with `mpremote cat :sleep_note.txt`."""
+    try:
+        with open("/sleep_note.txt", "w") as note:
+            note.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
+
+
+def _light_sleep_until_button(pin_number):
+    """Light-sleep the ESP32 in short naps until the button on pin_number is pressed (the pin reads
+    0 then): after each nap of SLEEP_POLL_MS the pin is read, and it counts as a press if it stays low
+    for 30 ms. Light sleep, not deep sleep, so the RAM is kept and the app carries on where it
+    stopped. Returns "woke" when it was pressed (and has been let go again), "busy" if the button is
+    down now (try again later), or "unavailable" if this firmware cannot do it. The USB serial link
+    goes away when it sleeps and does not come back by itself: replug or reset the badge."""
+    diary = []  # what it saw, for /sleep_note.txt
+    try:
+        import machine
+        pin = machine.Pin(pin_number, machine.Pin.IN, machine.Pin.PULL_UP)
+        if pin.value() == 0:
+            return "busy"
+        print("Light sleep until the button is pressed")
+        time.sleep_ms(100)  # let the line above out of the serial port
+        try:  # a clock that keeps counting while the chip sleeps (ticks_ms may not)
+            wall0 = time.time_ns()
+        except AttributeError:
+            wall0 = None
+        naps = 0
+        bounces = 0
+        while True:
+            machine.lightsleep(SLEEP_POLL_MS)
+            naps += 1
+            time.sleep_ms(3)  # the pull-up is back before the pin is read
+            if pin.value() != 0:
+                continue
+            held = True
+            for _ in range(3):  # a press stays down; a glitch or a bounce does not
+                time.sleep_ms(10)
+                if pin.value() != 0:
+                    held = False
+                    break
+            since = -1 if wall0 is None else (time.time_ns() - wall0) // 1000000
+            if held:
+                diary.append("PRESS after %d naps, %d ms after going to sleep" % (naps, since))
+                break
+            bounces += 1
+            if len(diary) < 12:
+                diary.append("nap %d, %d ms after going to sleep: pin low but not for 30 ms, ignored" % (naps, since))
+            if bounces >= 200:  # the pin keeps blipping low: not a button, give up and stay awake
+                diary.append("gave up after %d blips" % bounces)
+                _sleep_note(diary)
+                return "unavailable"
+        t0 = time.ticks_ms()
+        while pin.value() == 0 and time.ticks_diff(time.ticks_ms(), t0) < 3000:
+            time.sleep_ms(10)  # wait for the release, so it is not counted a second time
+        _sleep_note(diary)
+        return "woke"
+    except (ImportError, AttributeError, ValueError, TypeError, OSError) as ex:
+        print("No light sleep here:", ex)
+        return "unavailable"
+
+
 def _noise(a, b, seed):
     """A fixed 16-bit scramble of two numbers and a seed (small ints only: no slow big numbers)."""
     h = (a * 157 + b * 311 + seed) & 0xFFFF
@@ -794,11 +880,7 @@ _HUD_H = 152
 _PANEL_MARGIN = 6  # of the left panel from the left edge
 _RIGHT_PANEL_SHIFT = 12  # the right panel sits this much further in from the right edge: its outer
 # margin then equals the left panel's (14 px)
-_TIMER_W = 154  # the box of the timer (black, with white digits): 10% larger than it was (140 x 42)
-_TIMER_H = 46  # it grows sideways and downwards from the same top edge; the banner lettering stays
-_TIMER_CELL = 4.95  # block size of the timer digits: 10% more than 4.5 (the scores' are 3)
 _SCORE_CELL = 3  # block size of the score digits (and of the names in the menu)
-_TIMER_PAD = (10, 6)  # space between the box edge and the digits (left, top)
 # Where the SCORE/LINES column and the NEXT/button column start inside a panel. The left panel
 # (User A) has NEXT/button first; the right panel (User B) has SCORE/LINES first. 19 px apart.
 _SCORE_DX = (69, 8)
@@ -826,17 +908,11 @@ def _text_w(s, cell):
     return int(w - cell + 0.5)
 
 
-def _clock(seconds):
-    """HH:MM, hours and minutes (the hours stop at 99)."""
-    return "%02d:%02d" % (min(seconds // 3600, 99), seconds // 60 % 60)
-
-
 class _Hud:
-    """The score boards in the top banner: a panel for each player at its end and a timer
-    at the top centre. Red can only be drawn by the full refresh, so whatever changes has
-    to sit on white or black: the panels are the red band with white lettering, the numbers
-    and the next piece are black in small white boxes and the timer is white on black. Partial
-    refreshes change only those boxes. The names of the menu (NAME_MENU) are in boxes too, a
+    """The score boards in the top banner: a panel for each player at its end. Red can only be
+    drawn by the full refresh, so whatever changes has to sit on white or black: the panels
+    are the red band with white lettering, the numbers and the next piece are black in small
+    white boxes. Partial refreshes change only those boxes. The names of the menu (NAME_MENU) are in boxes too, a
     label for each: the selected one white with black letters, the others black with white
     letters. (A name cannot be white on the red and become black on white when it is selected:
     the red under a white label could never come back.)"""
@@ -844,8 +920,6 @@ class _Hud:
     def __init__(self, top):
         self.xs = (_PANEL_MARGIN, display_width - _PANEL_MARGIN - _HUD_W - _RIGHT_PANEL_SHIFT)
         self.y = top + 8
-        self.tx = (display_width - _TIMER_W) // 2
-        self.ty = top + 6
         self.by = self.y - (_BTN_UP if NAME_MENU else 0)  # the y the button groups are measured from
         self.menu = []  # the labels of the names listed in the left panel: (name, x, y)
         self.menu_cell = _MENU_CELL
@@ -877,7 +951,6 @@ class _Hud:
                     (x + nx, self.y + 28, 42, 42)]
         for name, mx, my in self.menu:
             out.append((mx, my, self.menu_w, self.menu_h))
-        out.append((self.tx, self.ty, _TIMER_W, _TIMER_H))
         return out
 
     def wells(self):
@@ -915,7 +988,7 @@ class _Hud:
         for wx, wy, ww, wh in self.boxes():
             red.fill_rect(wx, wy, ww, wh, 0)
 
-    def draw_values(self, score, lines, nexts, seconds, pressed=(False, False), selected=0):
+    def draw_values(self, score, lines, nexts, pressed=(False, False), selected=0):
         """The numbers and the next pieces: cleared and drawn again on each frame. The menu
         names too: the selected one black on a white label, the others white on a black label."""
         black = display.black
@@ -944,8 +1017,6 @@ class _Hud:
             black.fill_rect(bx - _BTN_R, self.by + 131 - _BTN_R, 2 * _BTN_R + 1, 2 * _BTN_R + 1, 0)
             if pressed[side]:
                 _disc(black, bx, self.by + 131, _DOT_R, 1)
-        black.fill_rect(self.tx, self.ty, _TIMER_W, _TIMER_H, 1)  # a black box, white digits
-        _text(black, _clock(seconds), self.tx + _TIMER_PAD[0], self.ty + _TIMER_PAD[1], _TIMER_CELL, 0)
 
 
 class _Banner:
@@ -1217,6 +1288,10 @@ class TetrisTagApp(BaseApp):
         self.cat_steps = 0  # in this many refreshes
         self.cat_k = 0  # and this is the one it is at
         self.cat_ready = False  # it is sitting where the next piece falls
+        self.panel_asleep = False  # the screen task has powered the panel down (set by the task)
+        self.sleep_t0 = 0  # when the name was finished
+        self.sleep_warned = False
+        self.sleep_unavailable = False  # light sleep does not work here: stay awake instead
         self.sand_seed = 0  # this round's dunes
         self.sand_y = 0  # the top row of the sand, and its rows kept as a copy (None: not drawn yet)
         self.sand_cache = None
@@ -1227,10 +1302,8 @@ class TetrisTagApp(BaseApp):
         self.seen = [False, False]  # a button was pressed since the last refresh
         self.run_start = 0  # ticks_ms when the pieces started to fall; 0 before (for the log)
         self.run_end = 0  # and when the last piece landed; 0 while it runs (for the log)
-        self.clock_start = None  # ticks_ms when the clock started; None: not started (see _request)
-        self.clock_shown = -1  # the minutes (since the start) it showed last
 
-    def _start_word(self, idx, reset_clock=False):
+    def _start_word(self, idx):
         self.word = idx % len(NAMES)
         plan = self.plans.get(self.word)
         if plan is None:
@@ -1257,9 +1330,6 @@ class TetrisTagApp(BaseApp):
             self.lines = [0, 0]
             self.glyph_left = list(plan.glyph_sizes)
             self.run_start = self.run_end = 0
-            if reset_clock:
-                self.clock_start = None  # starts at the first refresh of the animation
-                self.clock_shown = -1
             self.batch = 0
             self.frame = 0
             self.landed = []
@@ -1302,9 +1372,11 @@ class TetrisTagApp(BaseApp):
                     if session and not asleep and time.ticks_diff(time.ticks_ms(), still) > _IDLE_MS:
                         await panel.sleep()  # the picture sits still: no point keeping the boost up
                         asleep = True
+                        self.panel_asleep = True
                     await aio.sleep_ms(5)
                     continue
                 self.req = None
+                self.panel_asleep = False
                 if req == _FULL:
                     if session:
                         await panel.stop()
@@ -1312,6 +1384,7 @@ class TetrisTagApp(BaseApp):
                     display.update()
                     while not display.is_done_updating():
                         await aio.sleep_ms(50)
+                    self.panel_asleep = True  # the stock driver powers the panel down when it is done
                 else:
                     if not session:
                         await panel.start_keep(self.film)
@@ -1347,8 +1420,6 @@ class TetrisTagApp(BaseApp):
         self.req = kind
         self.pending = True
         self.frame_ms = time.ticks_ms()
-        if self.clock_start is None and kind == _PART:
-            self.clock_start = self.frame_ms or 1  # the clock starts with the first animation frame
 
     def _full(self):
         """A normal refresh of the whole panel (about 35 s)."""
@@ -1414,10 +1485,6 @@ class TetrisTagApp(BaseApp):
         hud = self.banner.hud if self.banner else None
         if hud is None:
             return
-        seconds = 0
-        if self.clock_start is not None:
-            seconds = time.ticks_diff(time.ticks_ms(), self.clock_start) // 1000
-        self.clock_shown = seconds // 60
         waves = self.waves if self.fast else ()
         upcoming = waves[self.batch + 1] if self.batch + 1 < len(waves) else ()
         nexts = []
@@ -1436,7 +1503,7 @@ class TetrisTagApp(BaseApp):
                 nexts.append(None)
         pressed = (self.seen[0] or bool(getattr(UserA, "value", False)),
                    self.seen[1] or bool(getattr(UserB, "value", False)))
-        hud.draw_values(self.score, self.lines, nexts, seconds, pressed, self.word)
+        hud.draw_values(self.score, self.lines, nexts, pressed, self.word)
 
     def _credit(self, flier, side):
         """A piece has landed: points to the player at `side`, and a line if it finished
@@ -1476,7 +1543,7 @@ class TetrisTagApp(BaseApp):
         wave = self.waves[self.batch]
         self.seen = [self.taps[0] > 0, self.taps[1] > 0]  # shown on the buttons drawn at the score boards
         if not self.run_start:
-            self.run_start = time.ticks_ms() or 1  # the clock starts with the first piece
+            self.run_start = time.ticks_ms() or 1  # (for the log)
         if self.frame == 0:
             lanes = self.plan.lanes(wave)
             self.fliers = [_Flier(self.plan, i, lanes[n], n) for n, i in enumerate(wave)]
@@ -1505,14 +1572,47 @@ class TetrisTagApp(BaseApp):
 
     def _start_blink(self):
         self.state = _BLINK
-        self.run_end = time.ticks_ms() or 1  # (the clock at the top keeps running)
+        self.run_end = time.ticks_ms() or 1
         self.blink_step = 0
         self.blink_ms = time.ticks_ms()
         if BLINK_MODE == "leds":
             leds.fill(BLINK_COLOR)
 
+    def _try_sleep(self):
+        """The name is finished. Once the panel has powered down, put the ESP32 to sleep until
+        the wake-up button (SLEEP_WAKE_BUTTON) is pressed, then start the name again (or the next one)."""
+        if self.sleep_unavailable:
+            return  # staying awake: the buttons still start a name
+        if self.fast and not self.panel_asleep:  # never sleep with the panel's booster up
+            if not self.sleep_warned and time.ticks_diff(time.ticks_ms(), self.sleep_t0) > 20000:
+                self.sleep_warned = True
+                print("Waiting for the panel to power down before sleeping")
+            return
+        leds.fill((0, 0, 0))
+        wake_button = UserA if SLEEP_WAKE_BUTTON == "A" else UserB
+        result = _light_sleep_until_button(_PINS[SLEEP_WAKE_BUTTON])
+        if result == "unavailable":
+            self.sleep_unavailable = True
+        elif result == "woke":
+            try:
+                wake_button._pressed_state = 2  # this press is used up: it must not count again
+            except AttributeError:
+                pass
+            self.beat = time.ticks_ms()  # the screen task must not think the app has stopped
+            self.seen[0 if SLEEP_WAKE_BUTTON == "A" else 1] = True
+            print("User " + SLEEP_WAKE_BUTTON + ": woke up, " + ("next name" if WAKE_NEXT_NAME else "same name again"))
+            self._start_word(self.word + 1 if WAKE_NEXT_NAME else self.word)
+
     def _start_hold(self):
-        """The name stays up, untouched, for HOLD_S seconds."""
+        """The name is finished: go to sleep until User A (SLEEP_WHEN_DONE), or stay up,
+        untouched, for HOLD_S seconds."""
+        if SLEEP_WHEN_DONE:
+            self.state = _SLEEP
+            self.sleep_t0 = time.ticks_ms()
+            self.sleep_warned = False
+            self.sleep_unavailable = False
+            print(f"{NAMES[self.word]} finished: the animation stops")
+            return
         self.state = _HOLD
         self.hold_ms = time.ticks_ms()
         print(f"Holding {NAMES[self.word]} for {HOLD_S} s")
@@ -1580,16 +1680,7 @@ class TetrisTagApp(BaseApp):
         self._draw_hud()  # a new name shows as selected at once
         self._request(_PART)
 
-    def _tick_clock(self):
-        """While nothing moves (the blink, the hold) keep the clock at the top running."""
-        if not CLOCK_IDLE_TICK or not self.fast or self.clock_start is None:
-            return
-        if time.ticks_diff(time.ticks_ms(), self.clock_start) // 60000 != self.clock_shown:  # a new minute
-            self._draw_hud()
-            self._request(_PART)
-
     def _blink_leds(self):
-        self._tick_clock()
         if time.ticks_diff(time.ticks_ms(), self.blink_ms) < BLINK_MS:
             return
         self.blink_ms = time.ticks_add(self.blink_ms, BLINK_MS)
@@ -1627,7 +1718,7 @@ class TetrisTagApp(BaseApp):
             leds.fill((0, 0, 0))
             self.failed = False
             self.need_full = True  # whatever was on the panel, draw the red bands afresh
-            self._start_word(0, True)
+            self._start_word(0)
             return
 
         if NAME_MENU:
@@ -1635,7 +1726,7 @@ class TetrisTagApp(BaseApp):
                 leds.fill((0, 0, 0))
                 self.seen[0] = True  # shows on the button circle at the next refresh
                 print("User A: next name")
-                self._start_word(self.word + 1, True)  # the clock starts again from 00:00
+                self._start_word(self.word + 1)
             if UserB.pressed():
                 if self.state == _DROP and self.fast:  # turns the piece at the next refresh
                     self.taps[1] += 1
@@ -1659,7 +1750,7 @@ class TetrisTagApp(BaseApp):
                 print("User B: turn right piece")
         elif UserA.pressed():
             leds.fill((0, 0, 0))
-            self._start_word(self.word + 1, True)
+            self._start_word(self.word + 1)
         elif UserB.pressed():
             leds.fill((0, 0, 0))
             self._start_word(self.word)
@@ -1703,8 +1794,8 @@ class TetrisTagApp(BaseApp):
         elif self.state == _HOLD:
             if time.ticks_diff(time.ticks_ms(), self.hold_ms) >= HOLD_S * 1000:
                 self._start_word(self.word if NAME_MENU else self.word + 1)
-            else:
-                self._tick_clock()
+        elif self.state == _SLEEP:
+            self._try_sleep()
         elif self.state == _CAT:
             self._cat_next()
         elif BLINK_MODE == "leds":
