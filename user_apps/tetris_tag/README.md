@@ -152,9 +152,31 @@ the press a little.
 The score starts again from 0 with each name. (`NAME_MENU = False` brings back the two-panel
 layout with `SCORE`, `LINES` and `NEXT` on each side.)
 
-There is no clock or level: the middle of the top band is just the title. The numbers use the same
+In the middle at the top is a battery icon (see below). There is no clock or level. The numbers use the same
 block font as the name, so the digits 0 to 9 are in it.
 `SCOREBOARD = False` (or a banner smaller than the full 25%) leaves the banner without them.
+
+**The battery icon.** Level with where the clock used to be, in the middle of the top band, is a phone-style
+battery: a white outline and terminal with five white segments in a black box that show the charge
+(`BATTERY_ICON = False` leaves it out).
+
+- The badge has a voltage sense on GPIO 14: a 1/2 divider (two 100 kOhm resistors) on the input of the
+  3.3 V regulator, read by the ADC (`reg_in_v_sns` in `lib/board.py`). The battery is a single Li-ion/LiPo
+  cell (JST-PH connector, MCP73831 charger, 4.2 V full, about 3.3 V empty).
+- **On battery:** the segments light at 3.55, 3.70, 3.80, 3.92 and 4.05 V (roughly 5%, 25%, 45%, 65%
+  and 85%), with 0.02 V of hysteresis so the icon does not flicker. The voltage is the average of 8 ADC
+  readings, taken every 30 s, and each change is printed over serial (`Battery: 3.91 V, 4 of 5 segments`).
+  These are voltage thresholds, not a fuel gauge: the voltage sags under load and the thresholds are a
+  typical Li-ion curve, not measured for your cell.
+- **On USB:** the sense pin sees the USB supply (about 4.8 V), not the battery, so while USB is plugged
+  in the icon shows a **lightning bolt** instead of segments, and there is no battery reading. Unplug
+  USB and the segments appear at the next refresh (the icon is redrawn with the next frame and
+  re-measured every 30 s, but the icon cannot change while the badge sleeps, so what you see on a
+  finished, sleeping badge is the level when it finished).
+- The charger's status pin does not go to the ESP32, as far as the schematic shows, so "charging" and
+  "full" cannot be told apart in software.
+- It changes only inside its black box, which is not red, so the partial refresh can redraw it like
+  the score digits; the white outline is drawn once by the full refresh at launch.
 
 **Why the names are on labels:** a name cannot be white lettering on the red and then become black
 on a white background when it is selected: the partial refresh cannot turn red pixels into anything

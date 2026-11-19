@@ -173,6 +173,13 @@ WAKE_NEXT_NAME = True
 """What the wake-up press does: True starts the next name of the list (what User A does when
 the badge is awake), False the same name again (what User B does)."""
 
+BATTERY_ICON = True
+"""A phone-style battery icon in the middle of the top band: an outline with 5 segments that show
+the battery's charge (read from the voltage sense on GPIO 14, a 1/2 divider on the input of the
+3.3 V regulator). While USB is plugged in that pin sees the USB supply, not the battery, so
+the icon then shows a lightning bolt (charging / on USB) instead of segments. Measured every
+30 s. Needs SCOREBOARD."""
+
 SAND = True
 """Sand under the name: an evenly stippled ground from just under the letters to the bottom of
 the screen, with small hills and valleys along its top edge (no line: the edge of the grains).
@@ -881,6 +888,45 @@ _PANEL_MARGIN = 6  # of the left panel from the left edge
 _RIGHT_PANEL_SHIFT = 12  # the right panel sits this much further in from the right edge: its outer
 # margin then equals the left panel's (14 px)
 _SCORE_CELL = 3  # block size of the score digits (and of the names in the menu)
+_BATT_PIN = 14  # the ADC pin of the battery sense (lib/board.py BATT_V_SNS_PIN)
+_BATT_BODY = (110, 44)  # outer size of the battery body
+_BATT_NUB = (8, 18)  # and of the terminal on its right
+_BATT_EDGE = 3  # width of the white outline
+_BATT_SEGS = 5  # segments
+_BATT_SEG = (16, 30, 4)  # one segment: width, height, gap to the next
+_BATT_STEPS = (3.55, 3.70, 3.80, 3.92, 4.05)  # volts at which the 1st ... 5th segment lights (a
+# Li-ion cell is full at 4.2 V and empty at about 3.3 V; roughly 5%, 25%, 45%, 65%, 85%)
+_BATT_USB_V = 4.35  # above this the sense sees USB, not the battery
+_BATT_BOLT = (  # the lightning bolt shown on USB, 8 x 14 blocks of 2 px
+    "......##",
+    ".....###",
+    "....###.",
+    "...###..",
+    "..####..",
+    ".#######",
+    "..#####.",
+    "....###.",
+    "...###..",
+    "..###...",
+    ".###....",
+    ".##.....",
+    "##......",
+    "#.......",
+)
+
+
+def _battery_volts():
+    """The volts at the input of the 3.3 V regulator (the battery, or USB while it is plugged in),
+    from the ADC on GPIO 14 through the 1/2 divider; None if there is no ADC (or no board)."""
+    try:
+        import machine
+        adc = machine.ADC(machine.Pin(_BATT_PIN), atten=machine.ADC.ATTN_11DB)
+        total = 0
+        for _ in range(8):
+            total += adc.read_uv()
+        return total / 8 * 2 / 1000000
+    except (ImportError, AttributeError, ValueError, TypeError, OSError):
+        return None
 # Where the SCORE/LINES column and the NEXT/button column start inside a panel. The left panel
 # (User A) has NEXT/button first; the right panel (User B) has SCORE/LINES first. 19 px apart.
 _SCORE_DX = (69, 8)
@@ -921,6 +967,12 @@ class _Hud:
         self.xs = (_PANEL_MARGIN, display_width - _PANEL_MARGIN - _HUD_W - _RIGHT_PANEL_SHIFT)
         self.y = top + 8
         self.by = self.y - (_BTN_UP if NAME_MENU else 0)  # the y the button groups are measured from
+        # the battery icon, centred, level with where the clock was: body, terminal, the black box inside
+        total_w = _BATT_BODY[0] + _BATT_NUB[0]
+        self.batx = (display_width - total_w) // 2
+        self.baty = top + 6
+        e = _BATT_EDGE
+        self.batwell = (self.batx + e, self.baty + e, _BATT_BODY[0] - 2 * e, _BATT_BODY[1] - 2 * e)
         self.menu = []  # the labels of the names listed in the left panel: (name, x, y)
         self.menu_cell = _MENU_CELL
         self.menu_w = self.menu_h = 0
@@ -951,6 +1003,8 @@ class _Hud:
                     (x + nx, self.y + 28, 42, 42)]
         for name, mx, my in self.menu:
             out.append((mx, my, self.menu_w, self.menu_h))
+        if BATTERY_ICON:
+            out.append(self.batwell)
         return out
 
     def wells(self):
@@ -985,13 +1039,39 @@ class _Hud:
             _disc(red, cx, by + 112, _BTN_R, 0)
             _disc(red, cx, by + 112, _BTN_R - 2, 1)
             _disc(red, cx, by + 131, _BTN_R, 0)
+        if BATTERY_ICON:  # the white outline and terminal; the box inside is cleared with the other boxes
+            red.fill_rect(self.batx, self.baty, _BATT_BODY[0], _BATT_BODY[1], 0)
+            red.fill_rect(self.batx + _BATT_BODY[0], self.baty + (_BATT_BODY[1] - _BATT_NUB[1]) // 2,
+                          _BATT_NUB[0], _BATT_NUB[1], 0)
         for wx, wy, ww, wh in self.boxes():
             red.fill_rect(wx, wy, ww, wh, 0)
 
-    def draw_values(self, score, lines, nexts, pressed=(False, False), selected=0):
+    def draw_battery(self, battery):
+        """The inside of the battery icon: black, with `battery` (0 to 5) white segments, or a white
+        lightning bolt if it is "usb"; empty for None (no reading)."""
+        black = display.black
+        wx, wy, ww, wh = self.batwell
+        black.fill_rect(wx, wy, ww, wh, 1)
+        if battery == "usb":
+            rows = len(_BATT_BOLT)
+            x0 = wx + (ww - 2 * len(_BATT_BOLT[0])) // 2
+            y0 = wy + (wh - 2 * rows) // 2
+            for gy, row in enumerate(_BATT_BOLT):
+                for gx, ch in enumerate(row):
+                    if ch == "#":
+                        black.fill_rect(x0 + 2 * gx, y0 + 2 * gy, 2, 2, 0)
+        elif battery:
+            sw, sh, gap = _BATT_SEG
+            pad = (ww - (_BATT_SEGS * sw + (_BATT_SEGS - 1) * gap)) // 2
+            for k in range(battery):
+                black.fill_rect(wx + pad + k * (sw + gap), wy + (wh - sh) // 2, sw, sh, 0)
+
+    def draw_values(self, score, lines, nexts, pressed=(False, False), selected=0, battery=None):
         """The numbers and the next pieces: cleared and drawn again on each frame. The menu
         names too: the selected one black on a white label, the others white on a black label."""
         black = display.black
+        if BATTERY_ICON:
+            self.draw_battery(battery)
         for n, (name, mx, my) in enumerate(self.menu):
             black.fill_rect(mx, my, self.menu_w, self.menu_h, 0 if n == selected else 1)
             _text(black, name, mx + _MENU_PAD, my + _MENU_PAD, self.menu_cell, 1 if n == selected else 0)
@@ -1292,6 +1372,9 @@ class TetrisTagApp(BaseApp):
         self.sleep_t0 = 0  # when the name was finished
         self.sleep_warned = False
         self.sleep_unavailable = False  # light sleep does not work here: stay awake instead
+        self.batt = None  # the battery level shown: 0 to 5 segments, "usb", or None (no reading yet)
+        self.batt_lit = None  # the last number of segments (kept to give the thresholds some hysteresis)
+        self.batt_t = None  # ticks_ms of the last measurement
         self.sand_seed = 0  # this round's dunes
         self.sand_y = 0  # the top row of the sand, and its rows kept as a copy (None: not drawn yet)
         self.sand_cache = None
@@ -1480,6 +1563,37 @@ class TetrisTagApp(BaseApp):
         self._show(landed, in_air)
         self.frame += 1
 
+    def _battery_level(self):
+        """The battery icon's state: measured every 30 s. 0 to 5 segments (a segment goes on a little
+        above its threshold and off a little below it, so the icon does not flicker), "usb" while the
+        sense sees the USB supply, or None if there is no reading."""
+        now = time.ticks_ms()
+        if self.batt_t is not None and time.ticks_diff(now, self.batt_t) < 30000:
+            return self.batt
+        self.batt_t = now
+        v = _battery_volts()
+        if v is None:
+            self.batt = None
+        elif v > _BATT_USB_V:
+            if self.batt != "usb":
+                print("Battery sense: %.2f V = USB power, no battery reading" % v)
+            self.batt = "usb"
+        else:
+            new = 0
+            for step in _BATT_STEPS:
+                if v >= step:
+                    new += 1
+            lit = self.batt_lit
+            if lit is not None:
+                if new > lit and v < _BATT_STEPS[lit] + 0.02:
+                    new = lit
+                elif new < lit and v > _BATT_STEPS[lit - 1] - 0.02:
+                    new = lit
+            if new != lit:
+                print("Battery: %.2f V, %d of %d segments" % (v, new, _BATT_SEGS))
+            self.batt = self.batt_lit = new
+        return self.batt
+
     def _draw_hud(self):
         """The numbers and next pieces on the score boards (if there are any)."""
         hud = self.banner.hud if self.banner else None
@@ -1503,7 +1617,7 @@ class TetrisTagApp(BaseApp):
                 nexts.append(None)
         pressed = (self.seen[0] or bool(getattr(UserA, "value", False)),
                    self.seen[1] or bool(getattr(UserB, "value", False)))
-        hud.draw_values(self.score, self.lines, nexts, pressed, self.word)
+        hud.draw_values(self.score, self.lines, nexts, pressed, self.word, self._battery_level() if BATTERY_ICON else None)
 
     def _credit(self, flier, side):
         """A piece has landed: points to the player at `side`, and a line if it finished
