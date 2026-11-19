@@ -889,15 +889,17 @@ _RIGHT_PANEL_SHIFT = 12  # the right panel sits this much further in from the ri
 # margin then equals the left panel's (14 px)
 _SCORE_CELL = 3  # block size of the score digits (and of the names in the menu)
 _BATT_PIN = 14  # the ADC pin of the battery sense (lib/board.py BATT_V_SNS_PIN)
-_BATT_BODY = (110, 44)  # outer size of the battery body
-_BATT_NUB = (8, 18)  # and of the terminal on its right
-_BATT_EDGE = 3  # width of the white outline
+_BATT_BODY = (87, 35)  # outer size of the battery body (80% of the first 110 x 44)
+_BATT_NUB = (6, 15)  # and of the terminal on its right
+_BATT_EDGE = 2  # width of the white outline
+_BATT_DOWN = 5  # how far below the top of the clock's old place the icon sits
 _BATT_SEGS = 5  # segments
-_BATT_SEG = (16, 30, 4)  # one segment: width, height, gap to the next
+_BATT_SEG = (13, 25, 3)  # one segment: width, height, gap to the next
+_BATT_BOLT_CELL = 1.6  # the bolt's blocks are 1.6 px (2 px before the icon was made 80%)
 _BATT_STEPS = (3.55, 3.70, 3.80, 3.92, 4.05)  # volts at which the 1st ... 5th segment lights (a
 # Li-ion cell is full at 4.2 V and empty at about 3.3 V; roughly 5%, 25%, 45%, 65%, 85%)
 _BATT_USB_V = 4.35  # above this the sense sees USB, not the battery
-_BATT_BOLT = (  # the lightning bolt shown on USB, 8 x 14 blocks of 2 px
+_BATT_BOLT = (  # the lightning bolt shown on USB, 8 x 14 blocks
     "......##",
     ".....###",
     "....###.",
@@ -970,7 +972,7 @@ class _Hud:
         # the battery icon, centred, level with where the clock was: body, terminal, the black box inside
         total_w = _BATT_BODY[0] + _BATT_NUB[0]
         self.batx = (display_width - total_w) // 2
-        self.baty = top + 6
+        self.baty = top + 6 + _BATT_DOWN
         e = _BATT_EDGE
         self.batwell = (self.batx + e, self.baty + e, _BATT_BODY[0] - 2 * e, _BATT_BODY[1] - 2 * e)
         self.menu = []  # the labels of the names listed in the left panel: (name, x, y)
@@ -1053,13 +1055,16 @@ class _Hud:
         wx, wy, ww, wh = self.batwell
         black.fill_rect(wx, wy, ww, wh, 1)
         if battery == "usb":
-            rows = len(_BATT_BOLT)
-            x0 = wx + (ww - 2 * len(_BATT_BOLT[0])) // 2
-            y0 = wy + (wh - 2 * rows) // 2
+            c = _BATT_BOLT_CELL
+            x0 = wx + (ww - int(len(_BATT_BOLT[0]) * c + 0.5)) // 2
+            y0 = wy + (wh - int(len(_BATT_BOLT) * c + 0.5)) // 2
             for gy, row in enumerate(_BATT_BOLT):
+                ya = int(gy * c + 0.5)
+                yb = int((gy + 1) * c + 0.5)
                 for gx, ch in enumerate(row):
                     if ch == "#":
-                        black.fill_rect(x0 + 2 * gx, y0 + 2 * gy, 2, 2, 0)
+                        xa = int(gx * c + 0.5)
+                        black.fill_rect(x0 + xa, y0 + ya, int((gx + 1) * c + 0.5) - xa, yb - ya, 0)
         elif battery:
             sw, sh, gap = _BATT_SEG
             pad = (ww - (_BATT_SEGS * sw + (_BATT_SEGS - 1) * gap)) // 2

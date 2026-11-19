@@ -156,7 +156,7 @@ In the middle at the top is a battery icon (see below). There is no clock or lev
 block font as the name, so the digits 0 to 9 are in it.
 `SCOREBOARD = False` (or a banner smaller than the full 25%) leaves the banner without them.
 
-**The battery icon.** Level with where the clock used to be, in the middle of the top band, is a phone-style
+**The battery icon.** In the middle of the top band, near where the clock used to be (5 px lower, 87 x 35 px, 80% of its first size, from y 11 to y 46), is a phone-style
 battery: a white outline and terminal with five white segments in a black box that show the charge
 (`BATTERY_ICON = False` leaves it out).
 
